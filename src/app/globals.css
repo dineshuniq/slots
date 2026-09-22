@@ -47,33 +47,33 @@ body {
 
 /* ---------------------------------------------------------------------------
    NEED-MOCK marker
-   A strip of repeated text and chevrons sliding right to left across whatever
-   it marks. The sequence is rendered twice and shifted by exactly half its
-   width, so the loop closes on itself with no visible jump.
+   Chevrons drifting right to left across whatever they mark. One chevron on an
+   18px tile, tiled over the element and shifted by exactly one tile, so the
+   loop closes on itself with no visible jump.
+
+   The colour is in the SVG rather than a Tailwind background class behind a
+   mask: a mask that fails to apply leaves a solid block covering the card,
+   while an image that fails to load leaves nothing. Every space in the data
+   URI is percent-encoded, which some engines need before they will parse it.
    --------------------------------------------------------------------------- */
-/* One chevron on a 14px tile, repeated across the element as a mask so the
-   colour stays a Tailwind background class rather than being baked into the
-   SVG. Shifting by exactly one tile makes the loop seamless. */
 @keyframes need-mock-drift {
   from {
-    -webkit-mask-position: 0 0;
-    mask-position: 0 0;
+    background-position: 0 0;
   }
   to {
-    -webkit-mask-position: -18px 0;
-    mask-position: -18px 0;
+    background-position: -18px 0;
   }
 }
 
 .need-mock-field {
-  --need-mock-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M9 2 4 7l5 5' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  -webkit-mask-image: var(--need-mock-tile);
-  mask-image: var(--need-mock-tile);
-  -webkit-mask-size: 18px 18px;
-  mask-size: 18px 18px;
-  -webkit-mask-repeat: repeat;
-  mask-repeat: repeat;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='18'%20height='18'%20viewBox='0%200%2018%2018'%3E%3Cpath%20d='M11%204%206%209l5%205'%20fill='none'%20stroke='%23f59e0b'%20stroke-opacity='.65'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: repeat;
   animation: need-mock-drift 0.7s linear infinite;
+}
+
+/* Paler ink, for chevrons running over a solid dark card. */
+.need-mock-field-dark {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='18'%20height='18'%20viewBox='0%200%2018%2018'%3E%3Cpath%20d='M11%204%206%209l5%205'%20fill='none'%20stroke='%23fde68a'%20stroke-opacity='.8'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 /* Motion that cannot be stopped is a problem for some people; the chevrons and

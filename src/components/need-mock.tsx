@@ -33,7 +33,7 @@ export default function NeedMock({
           ? { "aria-hidden": true }
           : { role: "status", "aria-label": "Needs mock" })}
         className={`need-mock-field pointer-events-none absolute inset-0 -z-10 ${
-          onDark ? "bg-amber-300/45" : "bg-amber-400/45"
+          onDark ? "need-mock-field-dark" : ""
         }`}
       />
 

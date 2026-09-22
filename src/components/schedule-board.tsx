@@ -539,19 +539,20 @@ export default function ScheduleBoard({
                               {booking.candidateName}
                             </button>
 
-                            {/* At the smallest zoom a chip is one line tall,
-                                so only the name fits. */}
+                            {/* Name and company at every zoom - between them
+                                they say who is sitting and for whom, which is
+                                the whole point of the chip. Only the session
+                                type is dropped when the rows are tightest. */}
+                            <p
+                              className={`truncate font-medium text-slate-700 ${zoom.companyText}`}
+                            >
+                              {booking.companyName}
+                            </p>
+
                             {zoom.detail ? (
-                              <>
-                                <p
-                                  className={`truncate font-medium text-slate-700 ${zoom.companyText}`}
-                                >
-                                  {booking.companyName}
-                                </p>
-                                <p className="mt-1 inline-block rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                                  {booking.sessionType}
-                                </p>
-                              </>
+                              <p className="mt-1 inline-block rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                {booking.sessionType}
+                              </p>
                             ) : null}
                           </div>
                           {past ? null : (

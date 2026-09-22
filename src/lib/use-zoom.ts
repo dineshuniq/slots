@@ -36,7 +36,7 @@ export type ZoomLevel = {
 export const ZOOM_LEVELS: ZoomLevel[] = [
   {
     name: "Compact",
-    row: "min-h-[1.75rem]",
+    row: "min-h-[2.75rem]",
     column: "7.5rem",
     timeColumn: "4.25rem",
     text: "text-[10px]",
