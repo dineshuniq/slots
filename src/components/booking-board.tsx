@@ -29,6 +29,7 @@ import type {
   Slot,
   WaitingSummary,
 } from "@/lib/types";
+import { BUTTON, TONES, type Tone } from "@/lib/tone";
 import { useNow } from "@/lib/use-now";
 import { usePolledResource } from "@/lib/use-poll";
 
@@ -94,9 +95,18 @@ export default function BookingBoard({
     void refresh();
   }
 
-  async function release(bookingId: string) {
+  async function release(booking: Booking) {
+    // A controller is cancelling someone else's session, so say whose.
+    if (!booking.isOwn) {
+      const confirmed = window.confirm(
+        `Release ${booking.candidateName}'s session on ${booking.panelId}, ` +
+          `${sessionRangeLabel(booking.slotIndex, booking.slotCount)}?`,
+      );
+      if (!confirmed) return;
+    }
+
     setNotice(null);
-    const response = await fetch(`/api/bookings/${bookingId}`, {
+    const response = await fetch(`/api/bookings/${booking.id}`, {
       method: "DELETE",
     });
     const result = await response.json().catch(() => ({}));
@@ -300,25 +310,21 @@ export default function BookingBoard({
 
           const mine = visibleBookings.some((booking) => booking.isOwn);
 
-          const tone = past
-            ? "border-slate-200 bg-slate-50"
-            : ownClash
-              ? "border-rose-400 bg-rose-50"
-              : unavailable
-              ? "border-slate-300 bg-slate-100"
-              : mine
-                ? "border-rose-500 bg-rose-50"
-                : canBook
-                  ? "border-emerald-300 bg-emerald-50"
-                  : "border-rose-200 bg-rose-50";
+          const ownQueue = queue.some((entry) => entry.isOwn);
 
-          const dot = past
-            ? "bg-slate-300"
-            : canBook
-              ? "bg-emerald-500"
+          const tone: Tone = past
+            ? "past"
+            : mine || ownClash
+              ? "own"
               : unavailable
-                ? "bg-slate-400"
-                : "bg-rose-500";
+                ? "closed"
+                : ownQueue
+                  ? "waiting"
+                  : canBook
+                    ? "available"
+                    : "booked";
+
+          const style = TONES[tone];
 
           // A candidate is not concerned with which panel, only whether the
           // time is open at all. "No room" and "not enough day left" are
@@ -342,7 +348,7 @@ export default function BookingBoard({
           return (
             <div
               key={slot.index}
-              className={`mb-3 break-inside-avoid rounded-xl border px-4 py-3 ${tone}`}
+              className={`mb-3 break-inside-avoid rounded-xl border px-4 py-3 shadow-sm ${style.card}`}
             >
               {needsApproval ? (
                 <p
@@ -359,7 +365,7 @@ export default function BookingBoard({
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`}
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${style.dot}`}
                 />
                 <div className="min-w-0 flex-1">
                   <p
@@ -367,15 +373,7 @@ export default function BookingBoard({
                   >
                     {timeLabel}
                   </p>
-                  <p
-                    className={`truncate text-xs ${
-                      past
-                        ? "text-slate-400"
-                        : canBook
-                          ? "text-emerald-700"
-                          : "text-rose-700"
-                    }`}
-                  >
+                  <p className={`truncate text-xs font-medium ${style.text}`}>
                     {summary}
                     {canBook && slotCount > 1
                       ? ` \u00b7 books ${sessionRangeLabel(slot.index, slotCount)}`
@@ -395,7 +393,7 @@ export default function BookingBoard({
                         mode: "book",
                       })
                     }
-                    className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                    className={`shrink-0 ${BUTTON.book}`}
                   >
                     Book
                   </button>
@@ -411,7 +409,7 @@ export default function BookingBoard({
                         mode: "waitlist",
                       })
                     }
-                    className="shrink-0 rounded-lg border border-sky-500 bg-white px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-50"
+                    className={`shrink-0 ${BUTTON.waitlist}`}
                   >
                     Join waiting list
                   </button>
@@ -423,9 +421,11 @@ export default function BookingBoard({
                   {queue.map((entry) => (
                     <li
                       key={entry.id}
-                      className="flex items-center gap-2 text-xs text-sky-800"
+                      className={`flex items-center gap-2 text-xs ${TONES.waiting.text}`}
                     >
-                      <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 font-medium">
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 font-semibold ${TONES.waiting.chip}`}
+                      >
                         Waiting #{entry.position}
                       </span>
                       <span className="min-w-0 flex-1 truncate">
@@ -465,8 +465,8 @@ export default function BookingBoard({
                           <span
                             className={`rounded px-1.5 py-0.5 font-semibold ${
                               past
-                                ? "bg-slate-200 text-slate-500"
-                                : "bg-rose-600 text-white"
+                                ? TONES.past.chip
+                                : TONES[booking.isOwn ? "own" : "booked"].chip
                             }`}
                           >
                             {durationLabel(booking.slotCount)}
@@ -474,16 +474,20 @@ export default function BookingBoard({
                         ) : null}
 
                         <span
-                          className={`font-semibold tabular-nums ${past ? "text-slate-400" : "text-rose-800"}`}
+                          className={`font-semibold tabular-nums ${
+                            past
+                              ? TONES.past.text
+                              : TONES[booking.isOwn ? "own" : "booked"].text
+                          }`}
                         >
                           {sessionRangeLabel(booking.slotIndex, booking.slotCount)}
                         </span>
 
-                        {booking.isOwn && !past ? (
+                        {(booking.isOwn || role === "controller") && !past ? (
                           <button
                             type="button"
-                            onClick={() => release(booking.id)}
-                            className="ml-auto rounded-lg border border-rose-300 px-2 py-0.5 font-medium text-rose-700 transition hover:bg-rose-100"
+                            onClick={() => release(booking)}
+                            className={`ml-auto ${BUTTON.release}`}
                           >
                             Release
                           </button>
@@ -491,7 +495,11 @@ export default function BookingBoard({
                       </div>
 
                       <p
-                        className={`mt-0.5 truncate ${past ? "text-slate-400" : "text-rose-700"}`}
+                        className={`mt-0.5 truncate ${
+                          past
+                            ? TONES.past.text
+                            : TONES[booking.isOwn ? "own" : "booked"].text
+                        }`}
                       >
                         {booking.isOwn && role === "candidate"
                           ? "You"
@@ -509,7 +517,7 @@ export default function BookingBoard({
                   {continuing.map((booking) => (
                     <li
                       key={booking.id}
-                      className={`flex items-center gap-1.5 text-xs ${past ? "text-slate-400" : "text-slate-600"}`}
+                      className={`flex items-center gap-1.5 text-xs ${past ? TONES.past.text : "text-slate-600"}`}
                     >
                       <span aria-hidden className="shrink-0">
                         &#8627;

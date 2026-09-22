@@ -35,9 +35,13 @@ export default function AppHeader({ role, displayName }: Props) {
 
   return (
     <>
-      <header className="no-print sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <header className="no-print sticky top-0 z-30 border-b border-slate-800 bg-slate-900 text-white shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <span className="text-sm font-semibold tracking-tight text-slate-900">
+          <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-sm bg-indigo-400"
+            />
             Panel Slots
           </span>
 
@@ -49,8 +53,8 @@ export default function AppHeader({ role, displayName }: Props) {
                   href={link.href}
                   className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                     pathname === link.href
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      ? "bg-indigo-500 text-white"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
                   }`}
                 >
                   {link.label}
@@ -60,9 +64,9 @@ export default function AppHeader({ role, displayName }: Props) {
           ) : null}
 
           <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-sm text-slate-600 sm:inline">
+            <span className="hidden text-sm text-slate-300 sm:inline">
               {displayName}
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 capitalize">
+              <span className="ml-2 rounded-full bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-200 capitalize">
                 {role}
               </span>
             </span>
@@ -71,7 +75,7 @@ export default function AppHeader({ role, displayName }: Props) {
               <button
                 type="button"
                 onClick={() => setShowPassword(true)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 hover:text-white"
               >
                 Password
               </button>
@@ -81,7 +85,7 @@ export default function AppHeader({ role, displayName }: Props) {
               type="button"
               onClick={signOut}
               disabled={busy}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 hover:text-white disabled:opacity-60"
             >
               Sign out
             </button>

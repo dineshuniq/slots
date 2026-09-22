@@ -299,7 +299,7 @@ export default function CandidatesBoard() {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Generating..." : "Generate token"}
             </button>

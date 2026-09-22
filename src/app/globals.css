@@ -15,7 +15,8 @@ body {
 }
 
 body {
-  background-color: var(--color-slate-100);
+  /* A faint indigo cast rather than flat grey, so white cards lift off it. */
+  background-color: #eef1f8;
   color: var(--color-slate-900);
   -webkit-font-smoothing: antialiased;
 }

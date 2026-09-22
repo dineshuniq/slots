@@ -165,7 +165,7 @@ export default function PasswordDialog({ onClose }: Props) {
               <button
                 type="submit"
                 disabled={busy}
-                className="flex-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {busy ? "Saving..." : "Update password"}
               </button>

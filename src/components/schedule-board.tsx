@@ -25,6 +25,7 @@ import type {
   ScheduleView,
   WaitingSummary,
 } from "@/lib/types";
+import { BUTTON, TONES } from "@/lib/tone";
 import { useNow } from "@/lib/use-now";
 import { usePolledResource } from "@/lib/use-poll";
 
@@ -388,19 +389,25 @@ export default function ScheduleBoard({
                 <p className="text-sm font-bold tracking-tight text-slate-900">
                   {panel.label}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {closedPanelIds.has(panel.id)
-                    ? "Closed"
-                    : `${countsByPanel.get(panel.id) ?? 0} booked`}
-                </p>
+                {closedPanelIds.has(panel.id) ? (
+                  <p
+                    className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${TONES.closed.chip}`}
+                  >
+                    Closed
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    {countsByPanel.get(panel.id) ?? 0} booked
+                  </p>
+                )}
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => setClosed(panel.id, !closedPanelIds.has(panel.id))}
-                  className={`mt-1 rounded-lg border px-2 py-0.5 text-[11px] font-medium transition disabled:opacity-50 ${
+                  className={`mt-1 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 ${
                     closedPanelIds.has(panel.id)
-                      ? "border-emerald-400 text-emerald-700 hover:bg-emerald-50"
-                      : "border-slate-300 text-slate-600 hover:bg-slate-100"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   {closedPanelIds.has(panel.id) ? "Reopen" : "Close day"}
@@ -466,7 +473,7 @@ export default function ScheduleBoard({
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group flex h-full cursor-grab flex-col rounded-lg border px-2.5 py-2 transition active:cursor-grabbing ${isMoving ? "border-sky-500 bg-sky-50 ring-2 ring-sky-300" : "border-rose-200 bg-rose-50 hover:border-rose-400"}`}
+                        className={`group flex h-full cursor-grab flex-col rounded-lg border px-2.5 py-2 transition active:cursor-grabbing ${isMoving ? "border-sky-500 bg-sky-50 ring-2 ring-sky-300" : `${TONES.booked.card} hover:border-rose-400`}`}
                       >
                         <div className="flex items-start gap-1.5">
                           <span
@@ -517,7 +524,9 @@ export default function ScheduleBoard({
                       style={placement}
                       className="border-b border-slate-100 bg-slate-100 p-1.5"
                     >
-                      <div className="flex h-full min-h-[3.25rem] items-center justify-center rounded-lg border border-dashed border-slate-300 text-[11px] text-slate-400">
+                      <div
+                        className={`flex h-full min-h-[3.25rem] items-center justify-center rounded-lg border border-dashed text-[11px] font-medium ${TONES.closed.card} ${TONES.closed.text}`}
+                      >
                         Closed
                       </div>
                     </div>
@@ -578,7 +587,9 @@ export default function ScheduleBoard({
                 key={entry.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
               >
-                <span className="w-10 shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-center text-xs font-semibold text-sky-800">
+                <span
+                  className={`w-10 shrink-0 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${TONES.waiting.chip}`}
+                >
                   #{entry.position}
                 </span>
                 <span className="w-32 shrink-0 tabular-nums text-slate-600">
@@ -597,7 +608,7 @@ export default function ScheduleBoard({
                   type="button"
                   disabled={busy}
                   onClick={() => placeFromQueue(entry)}
-                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                  className={`shrink-0 ${BUTTON.book}`}
                 >
                   Place
                 </button>
