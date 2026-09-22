@@ -3,12 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { TOKEN_LENGTH } from "@/lib/tokens";
+
 type Mode = "candidate" | "controller";
 
 export default function LoginForm() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("candidate");
   const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,11 +23,11 @@ export default function LoginForm() {
 
     try {
       const endpoint =
-        mode === "candidate"
-          ? "/api/auth/candidate"
-          : "/api/auth/controller";
+        mode === "candidate" ? "/api/auth/candidate" : "/api/auth/controller";
       const payload =
-        mode === "candidate" ? { token: token.trim() } : { password };
+        mode === "candidate"
+          ? { token: token.trim().toUpperCase() }
+          : { username: username.trim().toLowerCase(), password };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -90,36 +93,66 @@ export default function LoginForm() {
               id="token"
               name="token"
               value={token}
-              onChange={(event) => setToken(event.target.value)}
+              onChange={(event) =>
+                setToken(
+                  event.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, "")
+                    .slice(0, TOKEN_LENGTH),
+                )
+              }
               autoComplete="one-time-code"
               autoFocus
               spellCheck={false}
-              placeholder="CAND-XXXXXX"
-              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-sm tracking-wide uppercase outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              inputMode="text"
+              maxLength={TOKEN_LENGTH}
+              placeholder="ABCD"
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-3 text-center font-mono text-2xl tracking-[0.5em] uppercase outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
             />
             <p className="mt-2 text-xs text-slate-500">
-              Use the token from your interview invitation.
+              The {TOKEN_LENGTH}-character token from your interview invitation.
             </p>
           </div>
         ) : (
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Controller password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              autoFocus
-              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-            />
-          </div>
+          <>
+            <div>
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Username
+              </label>
+              <input
+                id="username"
+                name="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                autoComplete="username"
+                autoFocus
+                spellCheck={false}
+                placeholder="e.g. dinesh"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              />
+            </div>
+          </>
         )}
 
         {error ? (
@@ -136,7 +169,7 @@ export default function LoginForm() {
           disabled={busy}
           className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "Signing in\u2026" : "Sign in"}
+          {busy ? "Signing in..." : "Sign in"}
         </button>
       </form>
     </div>

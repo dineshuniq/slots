@@ -15,6 +15,8 @@ export type CandidateSession = {
 
 export type ControllerSession = {
   role: "controller";
+  controllerId: string;
+  username: string;
   name: string;
   exp: number;
 };
@@ -47,9 +49,13 @@ export async function getSession(): Promise<Session | null> {
   const session = await verifyPayload<Session>(token);
   if (!session || typeof session.exp !== "number") return null;
   if (session.exp * 1000 <= Date.now()) return null;
-  if (session.role !== "candidate" && session.role !== "controller") return null;
 
-  return session;
+  // Reject shapes that predate named controllers rather than trusting a
+  // half-populated session.
+  if (session.role === "candidate") return session.candidateId ? session : null;
+  if (session.role === "controller") return session.controllerId ? session : null;
+
+  return null;
 }
 
 export async function destroySession(): Promise<void> {
@@ -57,10 +63,14 @@ export async function destroySession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-export function isController(session: Session | null): session is ControllerSession {
+export function isController(
+  session: Session | null,
+): session is ControllerSession {
   return session?.role === "controller";
 }
 
-export function isCandidate(session: Session | null): session is CandidateSession {
+export function isCandidate(
+  session: Session | null,
+): session is CandidateSession {
   return session?.role === "candidate";
 }

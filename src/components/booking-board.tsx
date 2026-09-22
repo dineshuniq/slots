@@ -75,7 +75,12 @@ export default function BookingBoard({
   }
 
   const slots: Slot[] = data?.slots ?? [];
-  const bookedCount = slots.filter((slot) => slot.status === "booked").length;
+
+  // What a candidate can actually still book, so the count does not claim a
+  // morning that has already gone is available.
+  const openCount = slots.filter(
+    (slot) => slot.status === "available" && !slotIsPast(slot.index),
+  ).length;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -116,7 +121,7 @@ export default function BookingBoard({
           <p className="text-sm text-slate-600">
             {loading && !data
               ? "Loading timetable..."
-              : `${slots.length - bookedCount} of ${slots.length} half-hour slots available`}
+              : `${openCount} of ${slots.length} half-hour slots still open`}
           </p>
         </div>
         <SlotLegend showOwn={role === "candidate"} />

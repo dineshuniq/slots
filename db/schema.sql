@@ -1,6 +1,6 @@
 -- ---------------------------------------------------------------------------
 -- Panel slot booking - schema
--- Target: PostgreSQL 13+ (Neon, Supabase, or self-hosted)
+-- Target: PostgreSQL 13+ (Supabase, Neon, or self-hosted)
 -- Safe to run repeatedly.
 -- ---------------------------------------------------------------------------
 
@@ -15,12 +15,25 @@ create table if not exists panels (
   created_at  timestamptz not null default now()
 );
 
+-- Controllers sign in with a username and their own password ----------------
+create table if not exists controllers (
+  id            uuid        primary key default gen_random_uuid(),
+  username      text        not null unique,
+  name          text        not null,
+  password_hash text        not null,
+  active        boolean     not null default true,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
 -- Candidates. A candidate signs in with their token and is pinned to a panel.
+-- Tokens are four uppercase alphanumeric characters.
 create table if not exists candidates (
   id          uuid        primary key default gen_random_uuid(),
-  token       text        not null unique,
+  token       text        not null unique check (token ~ '^[A-Z0-9]{4}$'),
   name        text        not null,
   email       text,
+  phone       text,
   panel_id    text        not null references panels (id) on update cascade,
   active      boolean     not null default true,
   created_at  timestamptz not null default now()
@@ -62,15 +75,43 @@ create index if not exists bookings_candidate_idx
 
 -- Audit trail for controller moves ------------------------------------------
 create table if not exists booking_moves (
-  id             bigserial   primary key,
-  booking_id     uuid        not null references bookings (id) on delete cascade,
-  from_panel_id  text        not null,
-  from_slot_date date        not null,
-  from_slot_index smallint   not null,
-  to_panel_id    text        not null,
-  to_slot_date   date        not null,
-  to_slot_index  smallint    not null,
-  moved_at       timestamptz not null default now()
+  id              bigserial   primary key,
+  booking_id      uuid        not null references bookings (id) on delete cascade,
+  moved_by        uuid        references controllers (id),
+  from_panel_id   text        not null,
+  from_slot_date  date        not null,
+  from_slot_index smallint    not null,
+  to_panel_id     text        not null,
+  to_slot_date    date        not null,
+  to_slot_index   smallint    not null,
+  moved_at        timestamptz not null default now()
 );
 
 create index if not exists booking_moves_booking_idx on booking_moves (booking_id);
+
+-- Migrations for databases created before named controllers existed ---------
+alter table booking_moves add column if not exists moved_by uuid references controllers (id);
+
+do $migrate$
+declare
+  bad_tokens integer;
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidates_token_check'
+  ) then
+    select count(*) into bad_tokens
+      from candidates where token !~ '^[A-Z0-9]{4}$';
+
+    if bad_tokens > 0 then
+      raise notice
+        'Skipping the 4-character token constraint: % existing token(s) do not match. Reissue them, then re-run this script.',
+        bad_tokens;
+    else
+      alter table candidates
+        add constraint candidates_token_check check (token ~ '^[A-Z0-9]{4}$');
+    end if;
+  end if;
+end
+$migrate$;
+
+alter table candidates add column if not exists phone text;

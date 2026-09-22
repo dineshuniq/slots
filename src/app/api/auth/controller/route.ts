@@ -1,7 +1,8 @@
 import { fail, json, readJson, readString, serverError } from "@/lib/http";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { findControllerByUsername } from "@/lib/queries";
 import { clearAttempts, clientKey, tooManyAttempts } from "@/lib/rate-limit";
 import { createSession } from "@/lib/session";
-import { safeEqual } from "@/lib/sign";
 
 export async function POST(request: Request) {
   try {
@@ -10,21 +11,34 @@ export async function POST(request: Request) {
       return fail("Too many attempts. Wait a minute and try again.", 429);
     }
 
-    const expected = process.env.CONTROLLER_PASSWORD;
-    if (!expected) {
-      return fail("CONTROLLER_PASSWORD is not configured on the server.", 500);
+    const body = await readJson(request);
+    const username = readString(body, "username").toLowerCase();
+    const password = readString(body, "password");
+
+    if (!username || !password) {
+      return fail("Enter your username and password.", 400);
     }
 
-    const body = await readJson(request);
-    const password = readString(body, "password");
-    if (!password) return fail("Enter the controller password.", 400);
+    const controller = await findControllerByUsername(username);
 
-    if (!(await safeEqual(password, expected))) {
-      return fail("Incorrect password.", 401);
+    // Hash even when the username is unknown, so a missing account and a wrong
+    // password take the same time and cannot be told apart.
+    if (!controller) {
+      await hashPassword(password);
+      return fail("Incorrect username or password.", 401);
+    }
+
+    if (!(await verifyPassword(password, controller.passwordHash))) {
+      return fail("Incorrect username or password.", 401);
     }
 
     clearAttempts(key);
-    await createSession({ role: "controller", name: "Controller" });
+    await createSession({
+      role: "controller",
+      controllerId: controller.id,
+      username: controller.username,
+      name: controller.name,
+    });
 
     return json({ role: "controller", redirectTo: "/schedule" });
   } catch (error) {

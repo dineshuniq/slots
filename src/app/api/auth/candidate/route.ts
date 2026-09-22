@@ -1,5 +1,6 @@
 import { fail, json, readJson, readString, serverError } from "@/lib/http";
 import { findCandidateByToken } from "@/lib/queries";
+import { normaliseToken } from "@/lib/tokens";
 import { clearAttempts, clientKey, tooManyAttempts } from "@/lib/rate-limit";
 import { createSession } from "@/lib/session";
 
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
     }
 
     const body = await readJson(request);
-    const token = readString(body, "token");
+    const token = normaliseToken(readString(body, "token"));
     if (!token) return fail("Enter your access token.", 400);
 
     const candidate = await findCandidateByToken(token);

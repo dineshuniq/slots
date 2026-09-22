@@ -16,6 +16,9 @@ declare global {
   var __panelSlotsSql: postgres.Sql | undefined;
 }
 
+/** Milliseconds a single query may run before Postgres cancels it. */
+const STATEMENT_TIMEOUT_MS = 15_000;
+
 function createClient(): postgres.Sql {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -33,6 +36,12 @@ function createClient(): postgres.Sql {
     connect_timeout: 15,
     // pgbouncer in transaction mode cannot handle named prepared statements.
     prepare: false,
+    connection: {
+      // Fail fast instead of occupying a serverless function until the
+      // platform kills it. Postgres defaults to 2 minutes, which is far longer
+      // than any query here should take and longer than a request should wait.
+      statement_timeout: STATEMENT_TIMEOUT_MS,
+    },
     ssl: isLocal || sslDisabled ? false : "require",
   });
 }

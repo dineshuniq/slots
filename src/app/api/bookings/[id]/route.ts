@@ -81,11 +81,12 @@ export async function PATCH(request: Request, { params }: Params) {
       `;
       await tx`
         insert into booking_moves
-          (booking_id, from_panel_id, from_slot_date, from_slot_index,
+          (booking_id, moved_by, from_panel_id, from_slot_date, from_slot_index,
            to_panel_id, to_slot_date, to_slot_index)
         values
-          (${booking.id}, ${booking.panel_id}, ${booking.slot_date}::date,
-           ${booking.slot_index}, ${panel.id}, ${date}::date, ${slotIndex})
+          (${booking.id}, ${session.controllerId}, ${booking.panel_id},
+           ${booking.slot_date}::date, ${booking.slot_index},
+           ${panel.id}, ${date}::date, ${slotIndex})
       `;
     });
 

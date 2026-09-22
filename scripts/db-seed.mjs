@@ -1,11 +1,18 @@
 /**
- * Seeds panels and demo candidates, then prints their sign-in tokens.
- *   npm run db:seed            (skips if candidates already exist)
- *   npm run db:seed -- --force (adds another batch anyway)
+ * Seeds panels, controller accounts, and demo candidates.
+ *   npm run db:seed            (skips candidates if any already exist)
+ *   npm run db:seed -- --force (adds another batch of demo candidates)
+ *
+ * Controller accounts are only ever inserted, never updated, so re-running
+ * this never resets a password somebody has since changed.
+ *
+ * Imports the app's own hashing and token helpers via Node's TypeScript
+ * stripping, so there is one implementation rather than a copy that can drift.
  */
-import { randomBytes } from "node:crypto";
-
 import postgres from "postgres";
+
+import { hashPassword } from "../src/lib/password.ts";
+import { generateToken } from "../src/lib/tokens.ts";
 
 const url = process.env.DATABASE_URL;
 
@@ -17,18 +24,10 @@ if (!url) {
 const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url);
 const sql = postgres(url, {
   max: 1,
+  prepare: false,
+  onnotice: () => {},
   ssl: isLocal || /sslmode=disable/.test(url) ? false : "require",
 });
-
-// No I/O/0/1 - these get read aloud and typed in by hand.
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-function makeToken() {
-  const bytes = randomBytes(6);
-  let token = "";
-  for (const byte of bytes) token += ALPHABET[byte % ALPHABET.length];
-  return `CAND-${token}`;
-}
 
 const PANELS = [
   { id: "CELL1", label: "CELL1", sort_order: 1 },
@@ -36,14 +35,39 @@ const PANELS = [
   { id: "CELL3", label: "CELL3", sort_order: 3 },
 ];
 
-const PEOPLE = [
-  { name: "Aarav Sharma", panel: "CELL1" },
-  { name: "Priya Nair", panel: "CELL1" },
-  { name: "Rohan Gupta", panel: "CELL2" },
-  { name: "Ananya Iyer", panel: "CELL2" },
-  { name: "Vikram Reddy", panel: "CELL3" },
-  { name: "Meera Krishnan", panel: "CELL3" },
+const CONTROLLERS = [
+  { username: "diviya", name: "Diviya", password: "uniq@123" },
+  { username: "dinesh", name: "Dinesh", password: "uniq@123" },
+  { username: "manik", name: "Manik", password: "uniq@123" },
+  { username: "mukilan", name: "Mukilan", password: "uniq@123" },
 ];
+
+const PEOPLE = [
+  { name: "Aarav Sharma", panel: "CELL1", phone: "+91 98400 10001" },
+  { name: "Priya Nair", panel: "CELL1", phone: "+91 98400 10002" },
+  { name: "Rohan Gupta", panel: "CELL2", phone: "+91 98400 10003" },
+  { name: "Ananya Iyer", panel: "CELL2", phone: "+91 98400 10004" },
+  { name: "Vikram Reddy", panel: "CELL3", phone: "+91 98400 10005" },
+  { name: "Meera Krishnan", panel: "CELL3", phone: "+91 98400 10006" },
+];
+
+/** Four-character tokens collide occasionally; retry rather than fail. */
+async function insertWithToken(person) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const token = generateToken();
+    try {
+      await sql`
+        insert into candidates (token, name, phone, panel_id)
+        values (${token}, ${person.name}, ${person.phone}, ${person.panel})
+      `;
+      return token;
+    } catch (error) {
+      if (error.code === "23505") continue;
+      throw error;
+    }
+  }
+  throw new Error(`Could not allocate a free token for ${person.name}.`);
+}
 
 try {
   for (const panel of PANELS) {
@@ -57,27 +81,49 @@ try {
   }
   console.log(`Panels ready: ${PANELS.map((p) => p.id).join(", ")}`);
 
+  const added = [];
+  for (const controller of CONTROLLERS) {
+    const rows = await sql`
+      insert into controllers (username, name, password_hash)
+      values (${controller.username}, ${controller.name},
+              ${await hashPassword(controller.password)})
+      on conflict (username) do nothing
+      returning username
+    `;
+    if (rows.length > 0) added.push(controller.username);
+  }
+
+  const allControllers = await sql`
+    select username, name, active from controllers order by username
+  `;
+  console.log(
+    `\nControllers (${added.length} added, ${allControllers.length - added.length} already existed):\n`,
+  );
+  for (const row of allControllers) {
+    const isNew = added.includes(row.username);
+    console.log(
+      `  ${row.username.padEnd(10)} ${row.name.padEnd(12)} ${isNew ? "password: uniq@123" : "(existing - password unchanged)"}`,
+    );
+  }
+
   const existing = await sql`select count(*)::int as count from candidates`;
   const force = process.argv.includes("--force");
 
   if (existing[0].count > 0 && !force) {
     const rows = await sql`
-      select name, token, panel_id from candidates where active order by name
+      select name, token, panel_id, active from candidates order by name
     `;
     console.log(`\n${rows.length} candidate(s) already seeded:\n`);
     for (const row of rows) {
-      console.log(`  ${row.token}  ${row.panel_id}  ${row.name}`);
+      console.log(
+        `  ${row.token}  ${row.panel_id}  ${row.name}${row.active ? "" : "  (disabled)"}`,
+      );
     }
     console.log("\nRe-run with -- --force to add another batch.");
   } else {
     const created = [];
     for (const person of PEOPLE) {
-      const token = makeToken();
-      await sql`
-        insert into candidates (token, name, panel_id)
-        values (${token}, ${person.name}, ${person.panel})
-      `;
-      created.push({ token, ...person });
+      created.push({ token: await insertWithToken(person), ...person });
     }
     console.log(`\nSeeded ${created.length} candidates:\n`);
     for (const row of created) {
@@ -85,7 +131,9 @@ try {
     }
   }
 
-  console.log("\nControllers sign in with CONTROLLER_PASSWORD from your env.");
+  console.log(
+    "\nControllers sign in with their username. Change these passwords before going live.",
+  );
 } catch (error) {
   console.error("Seed failed:", error.message);
   process.exitCode = 1;
