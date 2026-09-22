@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import CandidateHistory from "@/components/candidate-history";
+import type { CandidateSource } from "@/lib/types";
 import { usePolledResource } from "@/lib/use-poll";
 
 type CandidateRecord = {
@@ -9,6 +11,8 @@ type CandidateRecord = {
   token: string;
   name: string;
   phone: string | null;
+  source: CandidateSource;
+  company: string | null;
   active: boolean;
   bookingCount: number;
   createdAt: string;
@@ -23,11 +27,14 @@ export default function CandidatesBoard() {
   const [search, setSearch] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [historyId, setHistoryId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [source, setSource] = useState<CandidateSource>("Uniq");
+  const [company, setCompany] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Polled so a token issued by one controller shows up for the others.
@@ -49,6 +56,8 @@ export default function CandidatesBoard() {
         body: JSON.stringify({
           name: name.trim(),
           phone: phone.trim(),
+          source,
+          company: company.trim(),
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -61,6 +70,7 @@ export default function CandidatesBoard() {
       setIssued({ ...result, active: true, bookingCount: 0 });
       setName("");
       setPhone("");
+      setCompany("");
       refresh();
     } catch {
       setNotice("Could not reach the server.");
@@ -188,6 +198,8 @@ export default function CandidatesBoard() {
       return (
         record.name.toLowerCase().includes(term) ||
         record.token.toLowerCase().includes(term) ||
+        (record.company ?? "").toLowerCase().includes(term) ||
+        record.source.toLowerCase().includes(term) ||
         (record.phone ?? "").includes(term)
       );
     });
@@ -295,6 +307,48 @@ export default function CandidatesBoard() {
             />
           </div>
 
+          <div>
+            <span className="block text-sm font-medium text-slate-700">
+              Source
+            </span>
+            {/* One button that flips, rather than two that look alike: there
+                are only ever two answers and one is always in force. */}
+            <button
+              type="button"
+              onClick={() =>
+                setSource((current) => (current === "Uniq" ? "Direct" : "Uniq"))
+              }
+              aria-label={`Source: ${source}. Tap to switch.`}
+              className={`mt-1.5 flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                source === "Uniq"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                  : "border-amber-500 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              }`}
+            >
+              {source}
+              <span aria-hidden className="text-xs opacity-60">
+                &#8646;
+              </span>
+            </button>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label
+              htmlFor="candidate-company"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Company <span className="text-slate-400">(optional)</span>
+            </label>
+            <input
+              id="candidate-company"
+              maxLength={120}
+              value={company}
+              onChange={(event) => setCompany(event.target.value)}
+              placeholder="e.g. Northwind Systems"
+              className={field}
+            />
+          </div>
+
           <div className="sm:col-span-3">
             <button
               type="submit"
@@ -310,7 +364,8 @@ export default function CandidatesBoard() {
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3">
             <div>
               <p className="text-xs font-medium tracking-wider text-emerald-700 uppercase">
-                Token for {issued.name}
+                Token for {issued.name} &middot; {issued.source}
+                {issued.company ? ` · ${issued.company}` : ""}
               </p>
               <p className="font-mono text-3xl font-bold tracking-[0.3em] text-emerald-900">
                 {issued.token}
@@ -432,6 +487,8 @@ export default function CandidatesBoard() {
                   <th className="px-4 py-3 font-semibold">Token</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
+                  <th className="px-4 py-3 font-semibold">Source</th>
+                  <th className="px-4 py-3 font-semibold">Company</th>
                   <th className="px-4 py-3 font-semibold">Bookings</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 text-right font-semibold">Action</th>
@@ -440,13 +497,13 @@ export default function CandidatesBoard() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                       Loading roster...
                     </td>
                   </tr>
                 ) : visible.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                       {records.length === 0
                         ? "No candidates yet. Generate a token above."
                         : "No candidates match that filter."}
@@ -472,8 +529,29 @@ export default function CandidatesBoard() {
                       <td className="px-4 py-3 font-mono text-base font-semibold tracking-widest">
                         {record.token}
                       </td>
-                      <td className="px-4 py-3">{record.name}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryId(record.id)}
+                          title="View history"
+                          className="rounded text-left font-medium underline decoration-slate-300 underline-offset-2 transition hover:decoration-current"
+                        >
+                          {record.name}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">{record.phone ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                            record.source === "Uniq"
+                              ? "bg-indigo-100 text-indigo-700"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {record.source}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{record.company ?? "—"}</td>
                       <td className="px-4 py-3 tabular-nums">
                         {record.bookingCount}
                       </td>
@@ -526,6 +604,13 @@ export default function CandidatesBoard() {
           slots back.
         </p>
       </section>
+
+      {historyId ? (
+        <CandidateHistory
+          candidateId={historyId}
+          onClose={() => setHistoryId(null)}
+        />
+      ) : null}
     </div>
   );
 }

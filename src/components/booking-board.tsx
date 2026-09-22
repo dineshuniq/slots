@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import BookingDialog, { type BookingTarget } from "@/components/booking-dialog";
+import NeedMock from "@/components/need-mock";
 import DateCarousel from "@/components/date-carousel";
 import SlotLegend from "@/components/slot-legend";
 import {
@@ -254,13 +255,18 @@ export default function BookingBoard({
 
           const ownSession = ownSessions.get(slot.index);
           if (ownSession) {
+            const ownNeedsMock = ownSession.needsMock && !past;
+
             return (
               <div
                 key={slot.index}
-                className={`mb-3 flex break-inside-avoid items-center gap-4 rounded-xl px-4 py-3 shadow-sm ${
+                className={`mb-3 break-inside-avoid overflow-hidden rounded-xl shadow-sm ${
                   past ? "bg-slate-400 text-white" : "bg-indigo-600 text-white"
                 }`}
               >
+                {ownNeedsMock ? <NeedMock /> : null}
+
+                <div className="flex items-center gap-4 px-4 py-3">
                 <span className="shrink-0 text-2xl leading-none font-bold tracking-tight">
                   {panelLabel(ownSession.panelId)}
                 </span>
@@ -293,6 +299,7 @@ export default function BookingBoard({
                     Release
                   </button>
                 )}
+                </div>
               </div>
             );
           }
@@ -481,6 +488,12 @@ export default function BookingBoard({
                 <ul className="mt-2 space-y-2 border-t border-slate-900/5 pt-2">
                   {detailed.map((booking) => (
                     <li key={booking.id} className="text-xs">
+                      {booking.needsMock && !past ? (
+                        <div className="mb-1.5">
+                          <NeedMock size="strip" />
+                        </div>
+                      ) : null}
+
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={`rounded bg-white/70 px-1.5 py-0.5 font-medium ${past ? "text-slate-400" : "text-slate-700"}`}

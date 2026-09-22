@@ -313,3 +313,22 @@ create table if not exists mock_completions (
 );
 
 create index if not exists mock_completions_day_idx on mock_completions (mock_date);
+
+-- Where a candidate came from, and the company they are attached to --------
+-- `source` distinguishes a walk-in from one of ours; `company` is optional
+-- because it is often not known when the token is issued. Note this is the
+-- candidate's own company, which is not the same as bookings.company_name -
+-- that records who they are interviewing with for one session.
+alter table candidates add column if not exists source text not null default 'Uniq';
+alter table candidates add column if not exists company text;
+
+do $candidate_source$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidates_source_check'
+  ) then
+    alter table candidates
+      add constraint candidates_source_check check (source in ('Direct', 'Uniq'));
+  end if;
+end
+$candidate_source$;

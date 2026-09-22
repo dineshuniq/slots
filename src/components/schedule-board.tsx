@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import BookingDialog, { type BookingTarget } from "@/components/booking-dialog";
+import CandidateHistory from "@/components/candidate-history";
+import NeedMock from "@/components/need-mock";
 import {
   ALL_SLOT_INDEXES,
   coveredSlots,
@@ -58,6 +60,7 @@ export default function ScheduleBoard({
 }: Props) {
   const [dateKey, setDateKey] = useState(today);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -383,6 +386,13 @@ export default function ScheduleBoard({
         </p>
       ) : null}
 
+      {historyId ? (
+        <CandidateHistory
+          candidateId={historyId}
+          onClose={() => setHistoryId(null)}
+        />
+      ) : null}
+
       {movingBooking ? (
         <div className="sticky top-16 z-40 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm text-sky-900 shadow-sm">
           <span>
@@ -503,6 +513,7 @@ export default function ScheduleBoard({
                         tabIndex={past ? undefined : 0}
                         onKeyDown={(event) => {
                           if (past) return;
+                          if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             setMovingId(isMoving ? null : booking.id);
@@ -511,17 +522,29 @@ export default function ScheduleBoard({
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
                         className={`group flex h-full flex-col rounded-lg border px-2.5 py-2 transition ${past ? `cursor-default ${TONES.past.card}` : isMoving ? `cursor-grab border-sky-500 bg-sky-50 ring-2 ring-sky-300 active:cursor-grabbing` : `cursor-grab active:cursor-grabbing ${TONES.booked.card} hover:border-rose-400`}`}
                       >
+                        {booking.needsMock && !past ? (
+                          <div className="mb-1 -mx-0.5">
+                            <NeedMock size="strip" />
+                          </div>
+                        ) : null}
+
                         <div className="flex items-start gap-1.5">
                           <span
                             aria-hidden
                             className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500"
                           />
                           <div className="min-w-0 flex-1">
-                            <p
-                              className={`truncate font-semibold text-slate-900 ${zoom.detail ? "text-xs" : zoom.text}`}
+                            <button
+                              type="button"
+                              title={`View ${booking.candidateName}'s history`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setHistoryId(booking.candidateId);
+                              }}
+                              className={`inline-block max-w-full cursor-pointer truncate rounded text-left align-top font-semibold text-slate-900 underline decoration-transparent underline-offset-2 transition hover:decoration-current ${zoom.detail ? "text-xs" : zoom.text}`}
                             >
                               {booking.candidateName}
-                            </p>
+                            </button>
 
                             {/* At the smallest zoom a chip is one line tall,
                                 so only the name fits. */}
@@ -655,7 +678,15 @@ export default function ScheduleBoard({
                   {sessionRangeLabel(entry.slotIndex, entry.slotCount)}
                 </span>
                 <span className="min-w-0 flex-1 text-slate-900">
-                  {entry.candidateName} &middot; {entry.companyName} &middot;{" "}
+                  <button
+                    type="button"
+                    title={`View ${entry.candidateName}'s history`}
+                    onClick={() => setHistoryId(entry.candidateId)}
+                    className="cursor-pointer rounded font-medium underline decoration-transparent underline-offset-2 transition hover:decoration-current"
+                  >
+                    {entry.candidateName}
+                  </button>{" "}
+                  &middot; {entry.companyName} &middot;{" "}
                   {entry.sessionType}
                   {entry.reason === "panel_closed" ? (
                     <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">

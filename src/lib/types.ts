@@ -8,6 +8,15 @@ export function isSessionType(value: unknown): value is SessionType {
 
 export type Role = "candidate" | "controller";
 
+/** Where a candidate came from: one of ours, or a walk-in. */
+export type CandidateSource = "Direct" | "Uniq";
+
+export const CANDIDATE_SOURCES: CandidateSource[] = ["Uniq", "Direct"];
+
+export function isCandidateSource(value: unknown): value is CandidateSource {
+  return value === "Direct" || value === "Uniq";
+}
+
 export type Panel = {
   id: string;
   label: string;
@@ -30,6 +39,8 @@ export type Booking = {
   slotIndex: number;
   /** Length in half-hour blocks: 1 = 30 min ... 4 = 2 hours. */
   slotCount: number;
+  /** No mock recorded for this candidate on this date yet. */
+  needsMock: boolean;
   isOwn: boolean;
 };
 

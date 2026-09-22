@@ -44,3 +44,32 @@ body {
     display: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   NEED-MOCK marker
+   A strip of repeated text and chevrons sliding right to left across whatever
+   it marks. The sequence is rendered twice and shifted by exactly half its
+   width, so the loop closes on itself with no visible jump.
+   --------------------------------------------------------------------------- */
+@keyframes need-mock-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.need-mock-track {
+  display: flex;
+  width: max-content;
+  animation: need-mock-scroll 6s linear infinite;
+}
+
+/* Motion that cannot be stopped is a problem for some people; the colour and
+   the words still carry the message without it. */
+@media (prefers-reduced-motion: reduce) {
+  .need-mock-track {
+    animation: none;
+  }
+}

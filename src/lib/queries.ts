@@ -2,6 +2,7 @@ import { sql } from "@/lib/db";
 import { ALL_SLOT_INDEXES, coveredSlots } from "@/lib/time";
 import type {
   Booking,
+  CandidateSource,
   CandidateSummary,
   Panel,
   SessionType,
@@ -21,6 +22,7 @@ type BookingRow = {
   slot_date: string;
   slot_index: number;
   slot_count: number;
+  needs_mock: boolean;
 };
 
 function toBooking(row: BookingRow, viewerCandidateId: string | null): Booking {
@@ -34,6 +36,7 @@ function toBooking(row: BookingRow, viewerCandidateId: string | null): Booking {
     slotDate: row.slot_date,
     slotIndex: Number(row.slot_index),
     slotCount: Number(row.slot_count),
+    needsMock: Boolean(row.needs_mock),
     isOwn: viewerCandidateId !== null && row.candidate_id === viewerCandidateId,
   };
 }
@@ -49,6 +52,7 @@ function redactForCandidate(booking: Booking): Booking {
     candidateId: "",
     candidateName: "",
     companyName: "",
+    needsMock: false,
     sessionType: booking.sessionType,
   };
 }
@@ -151,9 +155,15 @@ async function bookingsFor(
            b.session_type,
            to_char(b.slot_date, 'YYYY-MM-DD') as slot_date,
            b.slot_index,
-           b.slot_count
+           b.slot_count,
+           (mc.candidate_id is null) as needs_mock
       from bookings b
       join candidates c on c.id = b.candidate_id
+      -- One mock clears a candidate for the whole day, so the tick is matched
+      -- on (candidate, date) rather than on the booking.
+      left join mock_completions mc
+        on mc.candidate_id = b.candidate_id
+       and mc.mock_date    = b.slot_date
      where b.status = 'booked'
        and b.slot_date = ${date}::date
        ${panelId ? sql`and b.panel_id = ${panelId}` : sql``}
@@ -295,6 +305,9 @@ export type CandidateRecord = {
   token: string;
   name: string;
   phone: string | null;
+  source: CandidateSource;
+  /** The candidate's own company, not the one they interview with. */
+  company: string | null;
   active: boolean;
   bookingCount: number;
   /** When the token was issued; the roster is newest-first. */
@@ -309,6 +322,8 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
       token: string;
       name: string;
       phone: string | null;
+      source: CandidateSource;
+      company: string | null;
       active: boolean;
       booking_count: number;
       created_at: string;
@@ -318,6 +333,8 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
            c.token,
            c.name,
            c.phone,
+           c.source,
+           c.company,
            c.active,
            c.created_at,
            count(b.id) filter (where b.status = 'booked')::int as booking_count
@@ -332,6 +349,8 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
     token: row.token,
     name: row.name,
     phone: row.phone,
+    source: row.source,
+    company: row.company,
     active: row.active,
     bookingCount: Number(row.booking_count),
     createdAt: new Date(row.created_at).toISOString(),
@@ -394,10 +413,13 @@ export async function insertCandidate(input: {
   token: string;
   name: string;
   phone: string | null;
+  source: CandidateSource;
+  company: string | null;
 }): Promise<string> {
   const rows = await sql<{ id: string }[]>`
-    insert into candidates (token, name, phone)
-    values (${input.token}, ${input.name}, ${input.phone})
+    insert into candidates (token, name, phone, source, company)
+    values (${input.token}, ${input.name}, ${input.phone},
+            ${input.source}, ${input.company})
     returning id
   `;
   return rows[0].id;
@@ -411,4 +433,123 @@ export async function setCandidateActive(
     update candidates set active = ${active} where id = ${id} returning id
   `;
   return rows.length > 0;
+}
+
+// --- candidate history ------------------------------------------------------
+
+export type CandidateSession = {
+  id: string;
+  slotDate: string;
+  slotIndex: number;
+  slotCount: number;
+  panelId: string;
+  companyName: string;
+  sessionType: SessionType;
+  status: "booked" | "cancelled";
+  bookedBy: "candidate" | "controller";
+  createdAt: string;
+};
+
+export type CandidateHistory = {
+  candidate: CandidateRecord;
+  sessions: CandidateSession[];
+  /** Dates on which this candidate's mock was ticked off. */
+  mockDates: string[];
+};
+
+/**
+ * Everything on file for one candidate.
+ *
+ * Cancelled sessions are kept rather than filtered out: the point of a history
+ * is to answer "what happened", and a session that was booked and then dropped
+ * is part of that answer.
+ */
+export async function getCandidateHistory(
+  id: string,
+): Promise<CandidateHistory | null> {
+  const rows = await sql<
+    {
+      id: string;
+      token: string;
+      name: string;
+      phone: string | null;
+      source: CandidateSource;
+      company: string | null;
+      active: boolean;
+      created_at: string;
+    }[]
+  >`
+    select id, token, name, phone, source, company, active, created_at
+      from candidates
+     where id = ${id}
+     limit 1
+  `;
+
+  const row = rows[0];
+  if (!row) return null;
+
+  const sessions = await sql<
+    {
+      id: string;
+      slot_date: string;
+      slot_index: number;
+      slot_count: number;
+      panel_id: string;
+      company_name: string;
+      session_type: SessionType;
+      status: "booked" | "cancelled";
+      booked_by: "candidate" | "controller";
+      created_at: string;
+    }[]
+  >`
+    select id,
+           to_char(slot_date, 'YYYY-MM-DD') as slot_date,
+           slot_index,
+           slot_count,
+           panel_id,
+           company_name,
+           session_type,
+           status,
+           booked_by,
+           created_at
+      from bookings
+     where candidate_id = ${id}
+     order by slot_date desc, slot_index desc
+  `;
+
+  const mocks = await sql<{ mock_date: string }[]>`
+    select to_char(mock_date, 'YYYY-MM-DD') as mock_date
+      from mock_completions
+     where candidate_id = ${id}
+     order by mock_date desc
+  `;
+
+  const booked = sessions.filter((s) => s.status === 'booked').length;
+
+  return {
+    candidate: {
+      id: row.id,
+      token: row.token,
+      name: row.name,
+      phone: row.phone,
+      source: row.source,
+      company: row.company,
+      active: row.active,
+      bookingCount: booked,
+      createdAt: new Date(row.created_at).toISOString(),
+    },
+    sessions: sessions.map((s) => ({
+      id: s.id,
+      slotDate: s.slot_date,
+      slotIndex: Number(s.slot_index),
+      slotCount: Number(s.slot_count),
+      panelId: s.panel_id,
+      companyName: s.company_name,
+      sessionType: s.session_type,
+      status: s.status,
+      bookedBy: s.booked_by,
+      createdAt: new Date(s.created_at).toISOString(),
+    })),
+    mockDates: mocks.map((m) => m.mock_date),
+  };
 }

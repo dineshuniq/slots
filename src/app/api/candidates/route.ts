@@ -20,6 +20,7 @@ import {
 import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { getSession, isController } from "@/lib/session";
 import { generateToken } from "@/lib/tokens";
+import { isCandidateSource } from "@/lib/types";
 
 const MAX_NAME = 120;
 
@@ -32,6 +33,7 @@ function summariseNames(names: string[]): string {
   return `${shown} and ${names.length - NAMES_IN_SUMMARY} more`;
 }
 const MAX_PHONE = 32;
+const MAX_COMPANY = 120;
 
 /** Roster for the Candidates page and for booking on a candidate's behalf. */
 export async function GET() {
@@ -80,6 +82,18 @@ export async function POST(request: Request) {
       return fail("Enter a valid phone number.", 400);
     }
 
+    // Absent means Uniq, so an older client still creates a usable record.
+    const source = body.source === undefined ? "Uniq" : body.source;
+    if (!isCandidateSource(source)) {
+      return fail("Source must be Direct or Uniq.", 400);
+    }
+
+    // Optional: the company is often not known when the token is issued.
+    const company = readString(body, "company");
+    if (company.length > MAX_COMPANY) {
+      return fail(`Company must be ${MAX_COMPANY} characters or fewer.`, 400);
+    }
+
     // A four-character token has a small keyspace, so a collision is possible
     // rather than merely theoretical. Retry on the unique violation.
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -89,16 +103,38 @@ export async function POST(request: Request) {
           token,
           name,
           phone: phone || null,
+          source,
+          company: company || null,
         });
         await recordAudit({
           session,
           action: AUDIT_ACTIONS.candidateCreated,
-          summary: `${session.name} issued token ${token} to ${name}.`,
+          summary:
+            `${session.name} issued token ${token} to ${name} (${source}` +
+            (company ? `, ${company}` : "") +
+            `).`,
           subjectLabel: `${name} (${token})`,
-          details: { candidateId: id, token, name, phone: phone || null },
+          details: {
+            candidateId: id,
+            token,
+            name,
+            phone: phone || null,
+            source,
+            company: company || null,
+          },
         });
 
-        return json({ id, token, name, phone: phone || null }, 201);
+        return json(
+          {
+            id,
+            token,
+            name,
+            phone: phone || null,
+            source,
+            company: company || null,
+          },
+          201,
+        );
       } catch (error) {
         if (isUniqueViolation(error)) continue;
         throw error;
