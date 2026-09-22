@@ -22,6 +22,11 @@ export const AUDIT_ACTIONS = {
   bookingCreated: "booking.created",
   bookingMoved: "booking.moved",
   bookingCancelled: "booking.cancelled",
+  waitingJoined: "waiting.joined",
+  waitingLeft: "waiting.left",
+  waitingPlaced: "waiting.placed",
+  panelClosed: "panel.closed",
+  panelReopened: "panel.reopened",
   controllerSignedIn: "controller.signed_in",
   controllerPasswordChanged: "controller.password_changed",
 } as const;
@@ -37,6 +42,11 @@ export const AUDIT_ACTION_LABELS: { action: AuditAction; label: string }[] = [
   { action: AUDIT_ACTIONS.candidateEnabled, label: "Token enabled" },
   { action: AUDIT_ACTIONS.candidateDisabled, label: "Token disabled" },
   { action: AUDIT_ACTIONS.candidateDeleted, label: "Candidate deleted" },
+  { action: AUDIT_ACTIONS.waitingJoined, label: "Joined waiting list" },
+  { action: AUDIT_ACTIONS.waitingPlaced, label: "Placed from waiting list" },
+  { action: AUDIT_ACTIONS.waitingLeft, label: "Left waiting list" },
+  { action: AUDIT_ACTIONS.panelClosed, label: "Panel closed" },
+  { action: AUDIT_ACTIONS.panelReopened, label: "Panel reopened" },
   { action: AUDIT_ACTIONS.controllerSignedIn, label: "Controller signed in" },
   {
     action: AUDIT_ACTIONS.controllerPasswordChanged,

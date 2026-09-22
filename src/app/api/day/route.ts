@@ -1,5 +1,6 @@
 import { fail, json, serverError, unauthorized } from "@/lib/http";
 import { getDayView, listPanels } from "@/lib/queries";
+import { listClosures, listWaiting } from "@/lib/waiting";
 import { getSession } from "@/lib/session";
 import { isValidDateKey } from "@/lib/time";
 import type { DayView } from "@/lib/types";
@@ -24,13 +25,24 @@ export async function GET(request: Request) {
     const panels = await listPanels();
     if (panels.length === 0) return fail("No panels are configured.", 404);
 
+    const closedPanelIds = await listClosures(date);
+
     const viewerCandidateId =
       session.role === "candidate" ? session.candidateId : null;
+
+    // Candidates see only their own place in the queue; controllers see all.
+    const everyone = await listWaiting(date, viewerCandidateId);
+    const waiting =
+      viewerCandidateId === null
+        ? everyone
+        : everyone.filter((entry) => entry.isOwn);
 
     const payload: DayView = {
       date,
       panels,
-      slots: await getDayView(date, panels, viewerCandidateId),
+      closedPanelIds,
+      slots: await getDayView(date, panels, viewerCandidateId, closedPanelIds),
+      waiting,
       fetchedAt: new Date().toISOString(),
     };
 

@@ -24,6 +24,8 @@ export type BookingTarget = {
   slotCount: number;
   /** Panels free for the WHOLE session, best choice first. */
   panelIds: string[];
+  /** "waitlist" when every panel is taken and this joins the queue instead. */
+  mode?: "book" | "waitlist";
 };
 
 type Props = {
@@ -89,7 +91,10 @@ export default function BookingDialog({
     setBusy(true);
 
     try {
-      const response = await fetch("/api/bookings", {
+      const waitlisting = target.mode === "waitlist";
+      const response = await fetch(
+        waitlisting ? "/api/waiting-list" : "/api/bookings",
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,13 +103,23 @@ export default function BookingDialog({
           slotCount: target.slotCount,
           companyName: companyName.trim(),
           sessionType,
-          ...(role === "controller" ? { candidateId, panelId } : {}),
+          ...(role === "controller"
+            ? waitlisting
+              ? { candidateId }
+              : { candidateId, panelId }
+            : {}),
         }),
-      });
+      },
+      );
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(result.error ?? "Could not book that slot.");
+        setError(
+          result.error ??
+            (waitlisting
+              ? "Could not join the waiting list."
+              : "Could not book that slot."),
+        );
         return;
       }
 
@@ -134,7 +149,7 @@ export default function BookingDialog({
           id="booking-dialog-title"
           className="text-lg font-semibold text-slate-900"
         >
-          Book this slot
+          {target.mode === "waitlist" ? "Join the waiting list" : "Book this slot"}
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {sessionRangeLabel(target.slotIndex, target.slotCount)} on{" "}
@@ -148,6 +163,13 @@ export default function BookingDialog({
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <span className="font-semibold">{APPROVAL_LABEL}</span> — this
             session runs {EXTRA_HOURS_NOTE}.
+          </p>
+        ) : null}
+
+        {target.mode === "waitlist" ? (
+          <p className="mt-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+            Every panel is taken at this time. You will be given a place in the
+            queue, and a controller can seat you if one frees up.
           </p>
         ) : null}
 
@@ -179,7 +201,7 @@ export default function BookingDialog({
             </div>
           ) : null}
 
-          {role === "controller" ? (
+          {role === "controller" && target.mode !== "waitlist" ? (
             <div>
               <label
                 htmlFor="panel"
@@ -280,7 +302,13 @@ export default function BookingDialog({
               disabled={busy}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Booking..." : "Confirm booking"}
+              {busy
+                ? target.mode === "waitlist"
+                  ? "Joining..."
+                  : "Booking..."
+                : target.mode === "waitlist"
+                  ? "Join waiting list"
+                  : "Confirm booking"}
             </button>
           </div>
         </form>

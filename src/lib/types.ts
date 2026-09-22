@@ -33,7 +33,7 @@ export type Booking = {
   isOwn: boolean;
 };
 
-export type SlotStatus = "available" | "booked";
+export type SlotStatus = "available" | "booked" | "unavailable";
 
 /**
  * One half-hour block across every panel. A block is still "available" while
@@ -51,8 +51,26 @@ export type Slot = {
 export type DayView = {
   date: string;
   panels: Panel[];
+  /** Panels shut for this date; excluded from every slot free list. */
+  closedPanelIds: string[];
   slots: Slot[];
+  /** Queue for this date. Candidates receive only their own entries. */
+  waiting: WaitingSummary[];
   fetchedAt: string;
+};
+
+/** A place in the queue, as the booking screen shows it. */
+export type WaitingSummary = {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  slotIndex: number;
+  slotCount: number;
+  companyName: string;
+  sessionType: SessionType;
+  reason: "slot_full" | "panel_closed";
+  position: number;
+  isOwn: boolean;
 };
 
 /** Payload of GET /api/schedule - every panel for one date. */

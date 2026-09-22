@@ -46,6 +46,10 @@ function createClient(): postgres.Sql {
       // platform kills it. Postgres defaults to 2 minutes, which is far longer
       // than any query here should take and longer than a request should wait.
       statement_timeout: STATEMENT_TIMEOUT_MS,
+      // A request that dies mid-transaction would otherwise pin its pooled
+      // server connection indefinitely, starving the pool. Postgres reaps an
+      // abandoned transaction instead.
+      idle_in_transaction_session_timeout: STATEMENT_TIMEOUT_MS,
     },
     ssl: isLocal || sslDisabled ? false : "require",
   });

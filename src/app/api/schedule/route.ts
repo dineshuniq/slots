@@ -1,5 +1,6 @@
 import { fail, forbidden, json, serverError, unauthorized } from "@/lib/http";
 import { getScheduleView, listPanels } from "@/lib/queries";
+import { listClosures, listWaiting } from "@/lib/waiting";
 import { getSession, isController } from "@/lib/session";
 import { isValidDateKey } from "@/lib/time";
 import type { ScheduleView } from "@/lib/types";
@@ -14,9 +15,11 @@ export async function GET(request: Request) {
     const date = new URL(request.url).searchParams.get("date") ?? "";
     if (!isValidDateKey(date)) return fail("Invalid or missing date.", 400);
 
-    const [panels, bookings] = await Promise.all([
+    const [panels, bookings, closedPanelIds, waiting] = await Promise.all([
       listPanels(),
       getScheduleView(date),
+      listClosures(date),
+      listWaiting(date),
     ]);
 
     const payload: ScheduleView = {
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
       fetchedAt: new Date().toISOString(),
     };
 
-    return json(payload);
+    return json({ ...payload, closedPanelIds, waiting });
   } catch (error) {
     return serverError(error);
   }

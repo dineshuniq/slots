@@ -23,6 +23,7 @@ import type {
   CandidateSummary,
   Panel,
   ScheduleView,
+  WaitingSummary,
 } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { usePolledResource } from "@/lib/use-poll";
@@ -60,9 +61,15 @@ export default function ScheduleBoard({
   // Null until hydration, so the server and first client render agree.
   const now = useNow();
 
-  const { data, error, loading, refresh } = usePolledResource<ScheduleView>(
-    `/api/schedule?date=${dateKey}`,
+  const { data, error, loading, refresh } = usePolledResource<
+    ScheduleView & { closedPanelIds: string[]; waiting: WaitingSummary[] }
+  >(`/api/schedule?date=${dateKey}`);
+
+  const closedPanelIds = useMemo(
+    () => new Set(data?.closedPanelIds ?? []),
+    [data],
   );
+  const waiting = useMemo(() => data?.waiting ?? [], [data]);
 
   const panels = data?.panels ?? initialPanels;
   const bookings = useMemo(() => data?.bookings ?? [], [data]);
@@ -165,6 +172,82 @@ export default function ScheduleBoard({
     if (movingId === booking.id) setMovingId(null);
     void refresh();
   }
+
+  /**
+   * Closing reseats the whole day in booking order, so the warning has to say
+   * that plainly - the controller is not just hiding a column.
+   */
+  async function setClosed(panelId: string, closed: boolean) {
+    if (closed) {
+      // Never quote a count from data that has not arrived. Saying "nothing is
+      // booked" while the feed is still loading is a lie the controller acts on.
+      const onPanel = bookings.filter((b) => b.panelId === panelId).length;
+      const detail = !data
+        ? "Any sessions on it are reseated oldest booking first; whatever no longer fits goes to the waiting list."
+        : onPanel > 0
+          ? `${onPanel} session${onPanel === 1 ? "" : "s"} sit on it. Sessions are reseated oldest booking first; whatever no longer fits goes to the waiting list.`
+          : "Nothing is booked on it.";
+
+      const confirmed = window.confirm(
+        `Close ${panelId} for ${longDateLabel(dateKey)}?\n\n${detail}`,
+      );
+      if (!confirmed) return;
+    }
+
+    setNotice(null);
+    setBusy(true);
+    try {
+      const response = await fetch("/api/closures", {
+        method: closed ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateKey, panelId }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setNotice(result.error ?? "Could not change that panel.");
+        return;
+      }
+
+      if (closed) {
+        const moved = result.moved?.length ?? 0;
+        const queued = result.waitlisted?.length ?? 0;
+        setNotice(
+          `${panelId} closed. ${moved} session${moved === 1 ? "" : "s"} moved, ` +
+            `${queued} went to the waiting list.`,
+        );
+      } else {
+        setNotice(`${panelId} reopened. Sessions moved earlier were not restored.`);
+      }
+      void refresh();
+    } catch {
+      setNotice("Could not reach the server. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function placeFromQueue(entry: WaitingSummary) {
+    setNotice(null);
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/waiting-list/${entry.id}`, {
+        method: "POST",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setNotice(result.error ?? "Could not place them.");
+        return;
+      }
+      setNotice(`${entry.candidateName} placed on ${result.panelId}.`);
+      void refresh();
+    } catch {
+      setNotice("Could not reach the server. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
 
   function handleEmptyCellClick(panelId: string, slotIndex: number) {
     if (movingId) {
@@ -306,8 +389,22 @@ export default function ScheduleBoard({
                   {panel.label}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {countsByPanel.get(panel.id) ?? 0} booked
+                  {closedPanelIds.has(panel.id)
+                    ? "Closed"
+                    : `${countsByPanel.get(panel.id) ?? 0} booked`}
                 </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setClosed(panel.id, !closedPanelIds.has(panel.id))}
+                  className={`mt-1 rounded-lg border px-2 py-0.5 text-[11px] font-medium transition disabled:opacity-50 ${
+                    closedPanelIds.has(panel.id)
+                      ? "border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                      : "border-slate-300 text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {closedPanelIds.has(panel.id) ? "Reopen" : "Close day"}
+                </button>
               </div>
             ))}
 
@@ -413,6 +510,20 @@ export default function ScheduleBoard({
                   );
                 }
 
+                if (closedPanelIds.has(panel.id)) {
+                  return (
+                    <div
+                      key={key}
+                      style={placement}
+                      className="border-b border-slate-100 bg-slate-100 p-1.5"
+                    >
+                      <div className="flex h-full min-h-[3.25rem] items-center justify-center rounded-lg border border-dashed border-slate-300 text-[11px] text-slate-400">
+                        Closed
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isDropTarget = dropTarget === key;
                 return (
                   <div
@@ -450,6 +561,51 @@ export default function ScheduleBoard({
           </div>
         </div>
       </section>
+
+      {waiting.length > 0 ? (
+        <section className="mt-5 overflow-hidden rounded-2xl border border-sky-200 bg-white shadow-sm">
+          <header className="border-b border-sky-100 bg-sky-50 px-4 py-2.5">
+            <h2 className="text-sm font-semibold text-sky-900">
+              Waiting list &middot; {waiting.length}
+            </h2>
+            <p className="text-xs text-sky-800">
+              First come, first served. Place someone once a panel frees up.
+            </p>
+          </header>
+          <ul className="divide-y divide-slate-100">
+            {waiting.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+              >
+                <span className="w-10 shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-center text-xs font-semibold text-sky-800">
+                  #{entry.position}
+                </span>
+                <span className="w-32 shrink-0 tabular-nums text-slate-600">
+                  {sessionRangeLabel(entry.slotIndex, entry.slotCount)}
+                </span>
+                <span className="min-w-0 flex-1 text-slate-900">
+                  {entry.candidateName} &middot; {entry.companyName} &middot;{" "}
+                  {entry.sessionType}
+                  {entry.reason === "panel_closed" ? (
+                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      pushed out by a closure
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => placeFromQueue(entry)}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  Place
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <p className="mt-3 text-xs text-slate-500">
         {loading && !data

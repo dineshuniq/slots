@@ -6,6 +6,7 @@ import type {
   Panel,
   SessionType,
   Slot,
+  SlotStatus,
 } from "@/lib/types";
 
 type PanelRow = { id: string; label: string };
@@ -93,6 +94,12 @@ export async function listFreePanels(
      where p.active
        and not exists (
              select 1
+               from panel_closures pc
+              where pc.panel_id  = p.id
+                and pc.closed_on = ${date}::date
+           )
+       and not exists (
+             select 1
                from bookings b
               where b.panel_id  = p.id
                 and b.slot_date = ${date}::date
@@ -162,7 +169,10 @@ export async function getDayView(
   date: string,
   panels: Panel[],
   viewerCandidateId: string | null,
+  closedPanelIds: string[] = [],
 ): Promise<Slot[]> {
+  const closed = new Set(closedPanelIds);
+  const openPanels = panels.filter((panel) => !closed.has(panel.id));
   const rows = await bookingsFor(date, null);
   const bySlot = new Map<number, Booking[]>();
 
@@ -184,13 +194,23 @@ export async function getDayView(
   return ALL_SLOT_INDEXES.map<Slot>((index) => {
     const bookings = bySlot.get(index) ?? [];
     const taken = new Set(bookings.map((booking) => booking.panelId));
-    const freePanelIds = panels
+    const freePanelIds = openPanels
       .filter((panel) => !taken.has(panel.id))
       .map((panel) => panel.id);
 
+    // "unavailable" is a different answer from "booked": nothing is running
+    // here at all, so the candidate is told the panels are shut rather than
+    // that someone else got in first.
+    const status: SlotStatus =
+      openPanels.length === 0
+        ? "unavailable"
+        : freePanelIds.length > 0
+          ? "available"
+          : "booked";
+
     return {
       index,
-      status: freePanelIds.length > 0 ? "available" : "booked",
+      status,
       freePanelIds,
       bookings,
     };

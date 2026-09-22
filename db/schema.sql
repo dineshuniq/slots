@@ -215,3 +215,84 @@ create table if not exists audit_logs (
 create index if not exists audit_logs_recent_idx on audit_logs (occurred_at desc);
 create index if not exists audit_logs_action_idx on audit_logs (action);
 create index if not exists audit_logs_actor_idx on audit_logs (actor_name);
+
+-- Panel closures -------------------------------------------------------------
+-- A controller can take a whole panel out of service for one day, even when it
+-- already has bookings. Those bookings are re-seated or pushed to the waiting
+-- list at the moment of closure; this table only records that the panel is shut.
+create table if not exists panel_closures (
+  id         uuid        primary key default gen_random_uuid(),
+  panel_id   text        not null references panels (id) on update cascade,
+  closed_on  date        not null,
+  reason     text,
+  closed_by  uuid        references controllers (id),
+  created_at timestamptz not null default now(),
+  constraint panel_closures_once unique (panel_id, closed_on)
+);
+
+create index if not exists panel_closures_day_idx on panel_closures (closed_on);
+
+-- Waiting list ---------------------------------------------------------------
+-- Somewhere for a request to live when every panel at that time is taken, or
+-- when a closure pushed a booking out. Order is strictly by created_at: that is
+-- what makes it first in, first out, so position is derived rather than stored
+-- (a stored position would have to be renumbered on every removal).
+create table if not exists waiting_list (
+  id             uuid        primary key default gen_random_uuid(),
+  candidate_id   uuid        not null references candidates (id) on delete cascade,
+  slot_date      date        not null,
+  slot_index     smallint    not null check (slot_index between 0 and 25),
+  slot_count     smallint    not null default 1 check (slot_count between 1 and 4),
+  company_name   text        not null check (length(btrim(company_name)) > 0),
+  session_type   text        not null check (session_type in ('Interview', 'Assessment')),
+  status         text        not null default 'waiting'
+                 check (status in ('waiting', 'placed', 'cancelled')),
+  -- Why they are waiting, so the candidate can be told the right thing.
+  reason         text        not null default 'slot_full'
+                 check (reason in ('slot_full', 'panel_closed')),
+  created_at     timestamptz not null default now(),
+  resolved_at    timestamptz,
+  placed_booking_id uuid     references bookings (id) on delete set null
+);
+
+create index if not exists waiting_list_queue_idx
+  on waiting_list (slot_date, slot_index, created_at)
+  where status = 'waiting';
+
+create index if not exists waiting_list_candidate_idx
+  on waiting_list (candidate_id, slot_date)
+  where status = 'waiting';
+
+-- One live waiting entry per candidate per time, for the same reason bookings
+-- cannot overlap: a person cannot be in two queues for one moment.
+create unique index if not exists waiting_list_one_per_candidate_slot
+  on waiting_list (candidate_id, slot_date, slot_index)
+  where status = 'waiting';
+
+-- Closing a panel reshuffles the day in FIFO order, which means a session may
+-- move onto a panel that another session is about to vacate. With an immediate
+-- constraint that intermediate state is rejected, so the panel-overlap guard is
+-- made DEFERRABLE: still checked immediately for ordinary inserts, but the
+-- closure transaction defers it to commit, when the arrangement is valid again.
+do $deferrable_overlap$
+begin
+  if exists (
+    select 1 from pg_constraint
+     where conname = 'bookings_no_panel_overlap' and not condeferrable
+  ) then
+    alter table bookings drop constraint bookings_no_panel_overlap;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'bookings_no_panel_overlap'
+  ) then
+    alter table bookings add constraint bookings_no_panel_overlap
+      exclude using gist (
+        panel_id  with =,
+        slot_date with =,
+        int4range(slot_index, slot_index + slot_count) with &&
+      ) where (status = 'booked')
+      deferrable initially immediate;
+  end if;
+end
+$deferrable_overlap$;

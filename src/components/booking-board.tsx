@@ -27,6 +27,7 @@ import type {
   DayView,
   Panel,
   Slot,
+  WaitingSummary,
 } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { usePolledResource } from "@/lib/use-poll";
@@ -80,6 +81,19 @@ export default function BookingBoard({
     [dateKey, now],
   );
 
+  async function leaveQueue(waitingId: string) {
+    setNotice(null);
+    const response = await fetch(`/api/waiting-list/${waitingId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setNotice(result.error ?? "Could not leave the waiting list.");
+      return;
+    }
+    void refresh();
+  }
+
   async function release(bookingId: string) {
     setNotice(null);
     const response = await fetch(`/api/bookings/${bookingId}`, {
@@ -94,6 +108,16 @@ export default function BookingBoard({
   }
 
   const slots: Slot[] = useMemo(() => data?.slots ?? [], [data]);
+
+  const waitingBySlot = useMemo(() => {
+    const map = new Map<number, WaitingSummary[]>();
+    for (const entry of data?.waiting ?? []) {
+      const list = map.get(entry.slotIndex) ?? [];
+      list.push(entry);
+      map.set(entry.slotIndex, list);
+    }
+    return map;
+  }, [data]);
 
   /**
    * Panels free for a whole session starting here. A 2-hour session needs the
@@ -224,9 +248,21 @@ export default function BookingBoard({
           const needsApproval = hasExtraHours(slot.index, slotCount);
           const freePanels = panelsFreeFrom(slot.index);
           const freeCount = freePanels.length;
-          const canBook =
-            canStartAt(dateKey, slot.index, slotCount, now ?? undefined) &&
-            freeCount > 0;
+          const startable = canStartAt(
+            dateKey,
+            slot.index,
+            slotCount,
+            now ?? undefined,
+          );
+          const canBook = startable && freeCount > 0;
+
+          // Every panel shut for this time, as opposed to merely taken.
+          const unavailable = coveredSlots(slot.index, slotCount)
+            .filter((covered) => covered < slots.length)
+            .some((covered) => slots[covered].status === "unavailable");
+
+          const queue = waitingBySlot.get(slot.index) ?? [];
+          const canJoinQueue = startable && !unavailable && freeCount === 0;
 
           // Controllers see every session at this time; candidates only ever
           // see their own - the rest are just panels that are no longer free.
@@ -242,17 +278,21 @@ export default function BookingBoard({
 
           const tone = past
             ? "border-slate-200 bg-slate-50"
-            : mine
-              ? "border-rose-500 bg-rose-50"
-              : canBook
-                ? "border-emerald-300 bg-emerald-50"
-                : "border-rose-200 bg-rose-50";
+            : unavailable
+              ? "border-slate-300 bg-slate-100"
+              : mine
+                ? "border-rose-500 bg-rose-50"
+                : canBook
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-rose-200 bg-rose-50";
 
           const dot = past
             ? "bg-slate-300"
             : canBook
               ? "bg-emerald-500"
-              : "bg-rose-500";
+              : unavailable
+                ? "bg-slate-400"
+                : "bg-rose-500";
 
           // A candidate is not concerned with which panel, only whether the
           // time is open at all. "No room" and "not enough day left" are
@@ -261,6 +301,8 @@ export default function BookingBoard({
             ? "Past"
             : !fitsInDay(slot.index, slotCount)
               ? `Too late for ${durationLabel(slotCount)}`
+              : unavailable
+              ? "Panel unavailable at this time"
               : freeCount === 0
                 ? role === "candidate"
                   ? "Fully booked"
@@ -319,14 +361,63 @@ export default function BookingBoard({
                         slotIndex: slot.index,
                         slotCount,
                         panelIds: freePanels,
+                        mode: "book",
                       })
                     }
                     className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
                   >
                     Book
                   </button>
+                ) : canJoinQueue ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTarget({
+                        dateKey,
+                        slotIndex: slot.index,
+                        slotCount,
+                        panelIds: [],
+                        mode: "waitlist",
+                      })
+                    }
+                    className="shrink-0 rounded-lg border border-sky-500 bg-white px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-50"
+                  >
+                    Join waiting list
+                  </button>
                 ) : null}
               </div>
+
+              {queue.length > 0 ? (
+                <ul className="mt-2 space-y-1 border-t border-slate-900/5 pt-2">
+                  {queue.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-center gap-2 text-xs text-sky-800"
+                    >
+                      <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 font-medium">
+                        Waiting #{entry.position}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {entry.isOwn && role === "candidate"
+                          ? `You - ${entry.companyName} / ${entry.sessionType}`
+                          : `${entry.candidateName} - ${entry.companyName}`}
+                        {entry.reason === "panel_closed"
+                          ? " (panel closed)"
+                          : ""}
+                      </span>
+                      {entry.isOwn || role === "controller" ? (
+                        <button
+                          type="button"
+                          onClick={() => leaveQueue(entry.id)}
+                          className="shrink-0 rounded-lg border border-sky-300 px-2 py-0.5 font-medium transition hover:bg-sky-100"
+                        >
+                          Leave
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
 
               {detailed.length > 0 ? (
                 <ul className="mt-2 space-y-1 border-t border-slate-900/5 pt-2">
