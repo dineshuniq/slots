@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import AppHeader from "@/components/app-header";
 import BookingBoard from "@/components/booking-board";
 import SetupNotice from "@/components/setup-notice";
-import { findPanel, listCandidates, listPanels } from "@/lib/queries";
+import { listCandidates, listPanels } from "@/lib/queries";
 import { getSession } from "@/lib/session";
 import { buildDateWindow, todayKey } from "@/lib/time";
 import type { CandidateSummary, Panel } from "@/lib/types";
@@ -16,18 +16,13 @@ export default async function BookPage() {
 
   let panels: Panel[] = [];
   let candidates: CandidateSummary[] = [];
-  let initialPanelId = "";
 
   try {
-    if (session.role === "candidate") {
-      const panel = await findPanel(session.panelId);
-      if (!panel) redirect("/");
-      panels = [panel];
-      initialPanelId = panel.id;
-    } else {
-      [panels, candidates] = await Promise.all([listPanels(), listCandidates()]);
-      initialPanelId = panels[0]?.id ?? "";
-    }
+    // Controllers book on someone's behalf, so they need the roster too.
+    [panels, candidates] =
+      session.role === "controller"
+        ? await Promise.all([listPanels(), listCandidates()])
+        : [await listPanels(), []];
   } catch (error) {
     return (
       <SetupNotice
@@ -36,7 +31,7 @@ export default async function BookPage() {
     );
   }
 
-  if (!initialPanelId) {
+  if (panels.length === 0) {
     return <SetupNotice message="No panels have been created yet. Run the seed script." />;
   }
 
@@ -46,7 +41,6 @@ export default async function BookPage() {
       <BookingBoard
         role={session.role}
         panels={panels}
-        initialPanelId={initialPanelId}
         candidates={candidates}
         days={buildDateWindow()}
         today={todayKey()}

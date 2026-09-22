@@ -9,7 +9,6 @@ import {
   unauthorized,
 } from "@/lib/http";
 import {
-  findPanel,
   insertCandidate,
   listCandidateRecords,
   listCandidates,
@@ -40,7 +39,12 @@ export async function GET() {
   }
 }
 
-/** Create a candidate and issue them a token. */
+/**
+ * Create a candidate and issue them a token.
+ *
+ * No panel is chosen here. A candidate can be allocated to a different panel
+ * for every booking, so the panel is picked when the slot is booked.
+ */
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -63,12 +67,6 @@ export async function POST(request: Request) {
       return fail("Enter a valid phone number.", 400);
     }
 
-    const panelId = readString(body, "panelId");
-    if (!panelId) return fail("Select a panel.", 400);
-
-    const panel = await findPanel(panelId);
-    if (!panel) return fail("Unknown panel.", 404);
-
     // A four-character token has a small keyspace, so a collision is possible
     // rather than merely theoretical. Retry on the unique violation.
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -78,9 +76,8 @@ export async function POST(request: Request) {
           token,
           name,
           phone: phone || null,
-          panelId: panel.id,
         });
-        return json({ id, token, name, phone: phone || null, panelId: panel.id }, 201);
+        return json({ id, token, name, phone: phone || null }, 201);
       } catch (error) {
         if (isUniqueViolation(error)) continue;
         throw error;

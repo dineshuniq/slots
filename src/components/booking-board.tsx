@@ -12,34 +12,40 @@ import {
   slotStartLabel,
   type CarouselDay,
 } from "@/lib/time";
-import type { CandidateSummary, DayView, Panel, Slot } from "@/lib/types";
+import type {
+  Booking,
+  CandidateSummary,
+  DayView,
+  Panel,
+  Slot,
+} from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { usePolledResource } from "@/lib/use-poll";
 
 type Props = {
   role: "candidate" | "controller";
   panels: Panel[];
-  initialPanelId: string;
   candidates: CandidateSummary[];
   days: CarouselDay[];
   today: string;
 };
 
 /**
- * The candidate timetable: assigned panel on top, eight-day carousel, then the
- * 07:00-20:00 day in half-hour blocks. Controllers get the same screen with a
- * panel picker, which is the "all candidate features" half of their portal.
+ * The booking timetable: eight-day carousel, then the 07:00-20:00 day in
+ * half-hour blocks.
+ *
+ * No panel is picked here. Nobody is tied to a panel, so a block stays open
+ * while any panel is free at that time - candidates get one allocated on
+ * booking, and only controllers choose which.
  */
 export default function BookingBoard({
   role,
-  panels,
-  initialPanelId,
+  panels: initialPanels,
   candidates,
   days,
   today,
 }: Props) {
   const [dateKey, setDateKey] = useState(today);
-  const [panelId, setPanelId] = useState(initialPanelId);
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -48,12 +54,15 @@ export default function BookingBoard({
   const now = useNow();
 
   const { data, error, loading, refresh } = usePolledResource<DayView>(
-    `/api/day?date=${dateKey}&panel=${panelId}`,
+    `/api/day?date=${dateKey}`,
   );
 
-  const panelLabel = useMemo(
-    () => panels.find((panel) => panel.id === panelId)?.label ?? panelId,
-    [panels, panelId],
+  const panels = data?.panels ?? initialPanels;
+
+  const panelLabel = useCallback(
+    (panelId: string) =>
+      panels.find((panel) => panel.id === panelId)?.label ?? panelId,
+    [panels],
   );
 
   const slotIsPast = useCallback(
@@ -74,40 +83,26 @@ export default function BookingBoard({
     void refresh();
   }
 
-  const slots: Slot[] = data?.slots ?? [];
+  const slots: Slot[] = useMemo(() => data?.slots ?? [], [data]);
 
-  // What a candidate can actually still book, so the count does not claim a
-  // morning that has already gone is available.
+  // What can actually still be booked, so the count does not claim a morning
+  // that has already gone is available.
   const openCount = slots.filter(
     (slot) => slot.status === "available" && !slotIsPast(slot.index),
   ).length;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-xs font-medium tracking-wider text-slate-500 uppercase">
-          {role === "candidate" ? "Your assigned panel" : "Viewing panel"}
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          Book a slot
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          {role === "candidate"
+            ? "Pick a time. A free panel is allocated to you automatically."
+            : "Availability is counted across every panel."}
         </p>
-
-        {role === "candidate" ? (
-          <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
-            {panelLabel}
-          </h1>
-        ) : (
-          <select
-            aria-label="Panel"
-            value={panelId}
-            onChange={(event) => setPanelId(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-2xl font-bold tracking-tight text-slate-900 outline-none focus:border-slate-900"
-          >
-            {panels.map((panel) => (
-              <option key={panel.id} value={panel.id}>
-                {panel.label}
-              </option>
-            ))}
-          </select>
-        )}
-      </section>
+      </header>
 
       <section className="mt-5">
         <DateCarousel days={days} selected={dateKey} onSelect={setDateKey} />
@@ -148,25 +143,54 @@ export default function BookingBoard({
       <section className="mt-4 columns-1 gap-3 lg:columns-2">
         {slots.map((slot) => {
           const past = slotIsPast(slot.index);
-          const booking = slot.booking;
           const timeLabel = `${slotStartLabel(slot.index)} - ${slotEndLabel(slot.index)}`;
+          const freeCount = slot.freePanelIds.length;
+          const canBook = !past && freeCount > 0;
 
-          if (booking) {
-            const mine = booking.isOwn;
-            const tone = past
-              ? "border-slate-200 bg-slate-50"
-              : mine
-                ? "border-rose-500 bg-rose-50"
+          // Controllers see every session at this time; candidates only ever
+          // see their own - the rest are just panels that are no longer free.
+          const detailed: Booking[] =
+            role === "controller"
+              ? slot.bookings
+              : slot.bookings.filter((booking) => booking.isOwn);
+
+          const mine = detailed.some((booking) => booking.isOwn);
+
+          const tone = past
+            ? "border-slate-200 bg-slate-50"
+            : mine
+              ? "border-rose-500 bg-rose-50"
+              : canBook
+                ? "border-emerald-300 bg-emerald-50"
                 : "border-rose-200 bg-rose-50";
 
-            return (
-              <div
-                key={slot.index}
-                className={`mb-3 flex break-inside-avoid items-center gap-3 rounded-xl border px-4 py-3 ${tone}`}
-              >
+          const dot = past
+            ? "bg-slate-300"
+            : canBook
+              ? "bg-emerald-500"
+              : "bg-rose-500";
+
+          // A candidate is not concerned with which panel, only whether the
+          // time is open at all.
+          const summary = past
+            ? "Past"
+            : !canBook
+              ? role === "candidate"
+                ? "Fully booked"
+                : "All panels booked"
+              : role === "candidate"
+                ? "Available"
+                : `${freeCount} of ${panels.length} panel${panels.length === 1 ? "" : "s"} free`;
+
+          return (
+            <div
+              key={slot.index}
+              className={`mb-3 break-inside-avoid rounded-xl border px-4 py-3 ${tone}`}
+            >
+              <div className="flex items-center gap-3">
                 <span
                   aria-hidden
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${past ? "bg-slate-300" : "bg-rose-500"}`}
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`}
                 />
                 <div className="min-w-0 flex-1">
                   <p
@@ -175,76 +199,74 @@ export default function BookingBoard({
                     {timeLabel}
                   </p>
                   <p
-                    className={`truncate text-xs ${past ? "text-slate-400" : "text-rose-700"}`}
+                    className={`truncate text-xs ${
+                      past
+                        ? "text-slate-400"
+                        : canBook
+                          ? "text-emerald-700"
+                          : "text-rose-700"
+                    }`}
                   >
-                    {mine || role === "controller"
-                      ? `${booking.candidateName} / ${booking.companyName} / ${booking.sessionType}`
-                      : "Blocked"}
+                    {summary}
                   </p>
                 </div>
-                {mine && !past ? (
+
+                {canBook ? (
                   <button
                     type="button"
-                    onClick={() => release(booking.id)}
-                    className="shrink-0 rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+                    onClick={() =>
+                      setTarget({
+                        dateKey,
+                        slotIndex: slot.index,
+                        panelIds: slot.freePanelIds,
+                      })
+                    }
+                    className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
                   >
-                    Release
+                    Book
                   </button>
                 ) : null}
               </div>
-            );
-          }
 
-          if (past) {
-            return (
-              <div
-                key={slot.index}
-                className="mb-3 flex break-inside-avoid items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-400"
-              >
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 shrink-0 rounded-full bg-slate-300"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold tabular-nums">
-                    {timeLabel}
-                  </p>
-                  <p className="text-xs">Past</p>
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <button
-              key={slot.index}
-              type="button"
-              onClick={() =>
-                setTarget({ dateKey, slotIndex: slot.index, panelId })
-              }
-              className="mb-3 flex w-full break-inside-avoid items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-left transition hover:border-emerald-500 hover:bg-emerald-100"
-            >
-              <span
-                aria-hidden
-                className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold tabular-nums text-slate-900">
-                  {timeLabel}
-                </p>
-                <p className="text-xs text-emerald-700">Available</p>
-              </div>
-              <span className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
-                Book
-              </span>
-            </button>
+              {detailed.length > 0 ? (
+                <ul className="mt-2 space-y-1 border-t border-slate-900/5 pt-2">
+                  {detailed.map((booking) => (
+                    <li
+                      key={booking.id}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <span
+                        className={`shrink-0 rounded bg-white/70 px-1.5 py-0.5 font-medium ${past ? "text-slate-400" : "text-slate-700"}`}
+                      >
+                        {panelLabel(booking.panelId)}
+                      </span>
+                      <span
+                        className={`min-w-0 flex-1 truncate ${past ? "text-slate-400" : "text-rose-700"}`}
+                      >
+                        {booking.candidateName} / {booking.companyName} /{" "}
+                        {booking.sessionType}
+                      </span>
+                      {booking.isOwn && !past ? (
+                        <button
+                          type="button"
+                          onClick={() => release(booking.id)}
+                          className="shrink-0 rounded-lg border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+                        >
+                          Release
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           );
         })}
       </section>
 
       {target ? (
         <BookingDialog
-          key={`${target.panelId}:${target.dateKey}:${target.slotIndex}`}
+          key={`${target.dateKey}:${target.slotIndex}:${target.panelIds[0]}`}
           target={target}
           role={role}
           panels={panels}

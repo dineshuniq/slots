@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-import type { Panel } from "@/lib/types";
 import { usePolledResource } from "@/lib/use-poll";
 
 type CandidateRecord = {
@@ -10,18 +9,13 @@ type CandidateRecord = {
   token: string;
   name: string;
   phone: string | null;
-  panelId: string;
   active: boolean;
   bookingCount: number;
 };
 
-type Props = {
-  panels: Panel[];
-};
-
 type Filter = "all" | "active" | "disabled";
 
-export default function CandidatesBoard({ panels }: Props) {
+export default function CandidatesBoard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [issued, setIssued] = useState<CandidateRecord | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -30,7 +24,6 @@ export default function CandidatesBoard({ panels }: Props) {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [panelId, setPanelId] = useState(panels[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
 
   // Polled so a token issued by one controller shows up for the others.
@@ -52,7 +45,6 @@ export default function CandidatesBoard({ panels }: Props) {
         body: JSON.stringify({
           name: name.trim(),
           phone: phone.trim(),
-          panelId,
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -152,9 +144,15 @@ export default function CandidatesBoard({ panels }: Props) {
           Generate a token
         </h2>
 
+        <p className="mt-1 text-sm text-slate-600">
+          A token is not tied to a panel. Candidates are allocated a panel on
+          each booking, so one candidate can sit with different panels on the
+          same day.
+        </p>
+
         <form
           onSubmit={createCandidate}
-          className="mt-4 grid gap-4 sm:grid-cols-4"
+          className="mt-4 grid gap-4 sm:grid-cols-3"
         >
           <div className="sm:col-span-2">
             <label
@@ -192,28 +190,7 @@ export default function CandidatesBoard({ panels }: Props) {
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="candidate-panel"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Panel <span className="text-rose-600">*</span>
-            </label>
-            <select
-              id="candidate-panel"
-              value={panelId}
-              onChange={(event) => setPanelId(event.target.value)}
-              className={`${field} bg-white`}
-            >
-              {panels.map((panel) => (
-                <option key={panel.id} value={panel.id}>
-                  {panel.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-3">
             <button
               type="submit"
               disabled={busy}
@@ -291,13 +268,12 @@ export default function CandidatesBoard({ panels }: Props) {
 
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="thin-scroll overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-left text-sm">
+            <table className="w-full min-w-[40rem] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Token</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
-                  <th className="px-4 py-3 font-semibold">Panel</th>
                   <th className="px-4 py-3 font-semibold">Bookings</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 text-right font-semibold">Action</th>
@@ -306,13 +282,13 @@ export default function CandidatesBoard({ panels }: Props) {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                       Loading roster...
                     </td>
                   </tr>
                 ) : visible.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                       {records.length === 0
                         ? "No candidates yet. Generate a token above."
                         : "No candidates match that filter."}
@@ -331,7 +307,6 @@ export default function CandidatesBoard({ panels }: Props) {
                       </td>
                       <td className="px-4 py-3">{record.name}</td>
                       <td className="px-4 py-3">{record.phone ?? "—"}</td>
-                      <td className="px-4 py-3">{record.panelId}</td>
                       <td className="px-4 py-3 tabular-nums">
                         {record.bookingCount}
                       </td>

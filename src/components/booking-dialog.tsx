@@ -13,7 +13,8 @@ import {
 export type BookingTarget = {
   dateKey: string;
   slotIndex: number;
-  panelId: string;
+  /** Panels still free at this slot, best choice first. */
+  panelIds: string[];
 };
 
 type Props = {
@@ -27,6 +28,10 @@ type Props = {
 
 /**
  * Collects the two mandatory fields: Company Name and Session Type.
+ *
+ * Candidates are never shown a panel - availability is consolidated across
+ * panels and the server allocates whichever one is free. Controllers do pick,
+ * because they are arranging the panels themselves.
  *
  * Callers mount this with a key derived from the target slot, so opening a
  * different slot remounts it with fresh state instead of resetting fields in
@@ -43,7 +48,7 @@ export default function BookingDialog({
   const [companyName, setCompanyName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>("Interview");
   const [candidateId, setCandidateId] = useState("");
-  const [panelId, setPanelId] = useState(target.panelId);
+  const [panelId, setPanelId] = useState(target.panelIds[0] ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -55,9 +60,18 @@ export default function BookingDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const choices = useMemo(
+    () =>
+      target.panelIds.map((id) => ({
+        id,
+        label: panels.find((panel) => panel.id === id)?.label ?? id,
+      })),
+    [panels, target.panelIds],
+  );
+
   const panelLabel = useMemo(
-    () => panels.find((panel) => panel.id === panelId)?.label ?? panelId,
-    [panels, panelId],
+    () => choices.find((choice) => choice.id === panelId)?.label ?? panelId,
+    [choices, panelId],
   );
 
   async function submit(event: React.FormEvent) {
@@ -114,63 +128,66 @@ export default function BookingDialog({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {slotRangeLabel(target.slotIndex)} on {longDateLabel(target.dateKey)}
-          {role === "candidate" ? (
-            <span>
-              {" · panel "}
-              <span className="font-medium text-slate-900">{panelLabel}</span>
-            </span>
-          ) : null}
         </p>
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           {role === "controller" ? (
-            <>
-              <div>
-                <label
-                  htmlFor="candidate"
-                  className="block text-sm font-medium text-slate-700"
-                >
-                  Candidate
-                </label>
-                <select
-                  id="candidate"
-                  required
-                  value={candidateId}
-                  onChange={(event) => setCandidateId(event.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-                >
-                  <option value="" disabled>
-                    Select a candidate...
+            <div>
+              <label
+                htmlFor="candidate"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Candidate
+              </label>
+              <select
+                id="candidate"
+                required
+                value={candidateId}
+                onChange={(event) => setCandidateId(event.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              >
+                <option value="" disabled>
+                  Select a candidate...
+                </option>
+                {candidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
                   </option>
-                  {candidates.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name} ({candidate.panelId})
-                    </option>
-                  ))}
-                </select>
-              </div>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
-              <div>
-                <label
-                  htmlFor="panel"
-                  className="block text-sm font-medium text-slate-700"
-                >
-                  Panel
-                </label>
+          {role === "controller" ? (
+            <div>
+              <label
+                htmlFor="panel"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Panel <span className="text-rose-600">*</span>
+              </label>
+              {choices.length > 1 ? (
                 <select
                   id="panel"
                   value={panelId}
                   onChange={(event) => setPanelId(event.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                 >
-                  {panels.map((panel) => (
-                    <option key={panel.id} value={panel.id}>
-                      {panel.label}
+                  {choices.map((choice) => (
+                    <option key={choice.id} value={choice.id}>
+                      {choice.label}
                     </option>
                   ))}
                 </select>
-              </div>
-            </>
+              ) : (
+                <p className="mt-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-900">
+                  {panelLabel}
+                  <span className="ml-2 font-normal text-slate-500">
+                    (the only panel free at this time)
+                  </span>
+                </p>
+              )}
+            </div>
           ) : null}
 
           <div>

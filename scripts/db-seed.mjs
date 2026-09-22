@@ -42,13 +42,14 @@ const CONTROLLERS = [
   { username: "mukilan", name: "Mukilan", password: "uniq@123" },
 ];
 
+// No panel here: candidates are allocated one per booking, not per token.
 const PEOPLE = [
-  { name: "Aarav Sharma", panel: "CELL1", phone: "+91 98400 10001" },
-  { name: "Priya Nair", panel: "CELL1", phone: "+91 98400 10002" },
-  { name: "Rohan Gupta", panel: "CELL2", phone: "+91 98400 10003" },
-  { name: "Ananya Iyer", panel: "CELL2", phone: "+91 98400 10004" },
-  { name: "Vikram Reddy", panel: "CELL3", phone: "+91 98400 10005" },
-  { name: "Meera Krishnan", panel: "CELL3", phone: "+91 98400 10006" },
+  { name: "Aarav Sharma", phone: "+91 98400 10001" },
+  { name: "Priya Nair", phone: "+91 98400 10002" },
+  { name: "Rohan Gupta", phone: "+91 98400 10003" },
+  { name: "Ananya Iyer", phone: "+91 98400 10004" },
+  { name: "Vikram Reddy", phone: "+91 98400 10005" },
+  { name: "Meera Krishnan", phone: "+91 98400 10006" },
 ];
 
 /** Four-character tokens collide occasionally; retry rather than fail. */
@@ -57,8 +58,8 @@ async function insertWithToken(person) {
     const token = generateToken();
     try {
       await sql`
-        insert into candidates (token, name, phone, panel_id)
-        values (${token}, ${person.name}, ${person.phone}, ${person.panel})
+        insert into candidates (token, name, phone)
+        values (${token}, ${person.name}, ${person.phone})
       `;
       return token;
     } catch (error) {
@@ -111,12 +112,12 @@ try {
 
   if (existing[0].count > 0 && !force) {
     const rows = await sql`
-      select name, token, panel_id, active from candidates order by name
+      select name, token, active from candidates order by name
     `;
     console.log(`\n${rows.length} candidate(s) already seeded:\n`);
     for (const row of rows) {
       console.log(
-        `  ${row.token}  ${row.panel_id}  ${row.name}${row.active ? "" : "  (disabled)"}`,
+        `  ${row.token}  ${row.name}${row.active ? "" : "  (disabled)"}`,
       );
     }
     console.log("\nRe-run with -- --force to add another batch.");
@@ -127,7 +128,7 @@ try {
     }
     console.log(`\nSeeded ${created.length} candidates:\n`);
     for (const row of created) {
-      console.log(`  ${row.token}  ${row.panel}  ${row.name}`);
+      console.log(`  ${row.token}  ${row.name}`);
     }
   }
 

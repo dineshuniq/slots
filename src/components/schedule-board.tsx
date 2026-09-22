@@ -143,7 +143,17 @@ export default function ScheduleBoard({
       void move(movingId, panelId, slotIndex);
       return;
     }
-    setTarget({ dateKey, slotIndex, panelId });
+
+    // The clicked cell leads, but the dialog may still move the booking to
+    // another panel that is free at this time.
+    const free = panels
+      .filter(
+        (panel) =>
+          panel.id !== panelId && !byCell.has(cellKey(panel.id, slotIndex)),
+      )
+      .map((panel) => panel.id);
+
+    setTarget({ dateKey, slotIndex, panelIds: [panelId, ...free] });
   }
 
   const countsByPanel = useMemo(() => {
@@ -372,7 +382,7 @@ export default function ScheduleBoard({
 
       {target ? (
         <BookingDialog
-          key={`${target.panelId}:${target.dateKey}:${target.slotIndex}`}
+          key={`${target.dateKey}:${target.slotIndex}:${target.panelIds[0]}`}
           target={target}
           role="controller"
           panels={panels}

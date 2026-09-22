@@ -16,7 +16,6 @@ export type Panel = {
 export type CandidateSummary = {
   id: string;
   name: string;
-  panelId: string;
 };
 
 /** A booking as returned to the client. */
@@ -34,16 +33,22 @@ export type Booking = {
 
 export type SlotStatus = "available" | "booked";
 
+/**
+ * One half-hour block across every panel. A block is still "available" while
+ * any panel is free at that time, because a candidate is allocated a panel
+ * when the slot is booked rather than being pinned to one.
+ */
 export type Slot = {
   index: number;
   status: SlotStatus;
-  booking: Booking | null;
+  freePanelIds: string[];
+  bookings: Booking[];
 };
 
-/** Payload of GET /api/day - one panel's timetable for one date. */
+/** Payload of GET /api/day - the whole day, every panel, for one date. */
 export type DayView = {
   date: string;
-  panel: Panel;
+  panels: Panel[];
   slots: Slot[];
   fetchedAt: string;
 };
@@ -57,5 +62,5 @@ export type ScheduleView = {
 };
 
 export type Viewer =
-  | { role: "candidate"; candidate: CandidateSummary; panel: Panel }
+  | { role: "candidate"; candidate: CandidateSummary }
   | { role: "controller"; name: string };

@@ -1,17 +1,23 @@
-import { isUniqueViolation, sql } from "@/lib/db";
+import {
+  CANDIDATE_SLOT_CONSTRAINT,
+  sql,
+  uniqueViolationConstraint,
+} from "@/lib/db";
 import { fail, json, readJson, readString, serverError, unauthorized } from "@/lib/http";
-import { findPanel } from "@/lib/queries";
+import { findPanel, listFreePanels } from "@/lib/queries";
 import { getSession } from "@/lib/session";
 import { isDateInWindow, isSlotInPast, isValidDateKey, isValidSlotIndex } from "@/lib/time";
-import { isSessionType } from "@/lib/types";
+import { isSessionType, type Panel } from "@/lib/types";
 
 const MAX_COMPANY_NAME = 120;
 
 /**
  * Book a half-hour block.
  *
- * Candidates book on their own panel, for themselves. Controllers book on
- * behalf of a named candidate and may place them on any panel.
+ * The panel is allocated here, not on the candidate record - the same
+ * candidate can sit with a different panel for every booking. A candidate only
+ * picks a time and gets whichever panel is free; a controller books on behalf
+ * of a named candidate and says which panel.
  */
 export async function POST(request: Request) {
   try {
@@ -41,43 +47,84 @@ export async function POST(request: Request) {
     }
 
     let candidateId: string;
-    let panelId: string;
 
     if (session.role === "candidate") {
       if (isSlotInPast(date, slotIndex)) {
         return fail("That time has already passed.", 400);
       }
       candidateId = session.candidateId;
-      panelId = session.panelId;
     } else {
       candidateId = readString(body, "candidateId");
       if (!candidateId) return fail("Select a candidate.", 400);
 
-      const rows = await sql<{ panel_id: string }[]>`
-        select panel_id from candidates where id = ${candidateId} and active limit 1
+      const rows = await sql<{ id: string }[]>`
+        select id from candidates where id = ${candidateId} and active limit 1
       `;
       if (!rows[0]) return fail("Unknown candidate.", 404);
-
-      panelId = readString(body, "panelId") || rows[0].panel_id;
     }
 
-    const panel = await findPanel(panelId);
-    if (!panel) return fail("Unknown panel.", 404);
-
-    const inserted = await sql<{ id: string }[]>`
-      insert into bookings
-        (panel_id, candidate_id, slot_date, slot_index, company_name, session_type, booked_by)
-      values
-        (${panel.id}, ${candidateId}, ${date}::date, ${slotIndex},
-         ${companyName}, ${sessionType}, ${session.role})
-      returning id
+    // Panels are allocated per booking, so a candidate can hold several a day -
+    // but not two at the same time on different panels.
+    const clash = await sql<{ id: string }[]>`
+      select id
+        from bookings
+       where candidate_id = ${candidateId}
+         and slot_date    = ${date}::date
+         and slot_index   = ${slotIndex}
+         and status       = 'booked'
+       limit 1
     `;
-
-    return json({ id: inserted[0].id }, 201);
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return fail("That slot was just taken. Pick another one.", 409);
+    if (clash[0]) {
+      return fail("That candidate is already booked at this time.", 409);
     }
+
+    // Controllers name the panel. Candidates do not see panels at all, so any
+    // panel still free at that time will do - walk them in order, because a
+    // concurrent booking can take one between the read and the insert.
+    const requested = readString(body, "panelId");
+    let wanted: Panel[];
+
+    if (session.role === "controller") {
+      if (!requested) return fail("Select a panel.", 400);
+      const panel = await findPanel(requested);
+      if (!panel) return fail("Unknown panel.", 404);
+      wanted = [panel];
+    } else {
+      wanted = await listFreePanels(date, slotIndex);
+      if (wanted.length === 0) {
+        return fail("That slot was just taken. Pick another one.", 409);
+      }
+    }
+
+    for (const panel of wanted) {
+      try {
+        const inserted = await sql<{ id: string }[]>`
+          insert into bookings
+            (panel_id, candidate_id, slot_date, slot_index, company_name, session_type, booked_by)
+          values
+            (${panel.id}, ${candidateId}, ${date}::date, ${slotIndex},
+             ${companyName}, ${sessionType}, ${session.role})
+          returning id
+        `;
+        return json({ id: inserted[0].id, panelId: panel.id }, 201);
+      } catch (error) {
+        const constraint = uniqueViolationConstraint(error);
+
+        // The clash check above can be beaten by a concurrent request from the
+        // same candidate, so the index is the real guard. Walking to the next
+        // panel would just book them twice.
+        if (constraint === CANDIDATE_SLOT_CONSTRAINT) {
+          return fail("That candidate is already booked at this time.", 409);
+        }
+
+        // This panel was taken between the read and the insert; try the next.
+        if (constraint) continue;
+        throw error;
+      }
+    }
+
+    return fail("That slot was just taken. Pick another one.", 409);
+  } catch (error) {
     return serverError(error);
   }
 }

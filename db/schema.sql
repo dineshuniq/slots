@@ -26,7 +26,9 @@ create table if not exists controllers (
   updated_at    timestamptz not null default now()
 );
 
--- Candidates. A candidate signs in with their token and is pinned to a panel.
+-- Candidates. A candidate signs in with their token. No panel is stored here:
+-- a candidate can be allocated to a different panel for every booking, so the
+-- panel lives on the booking row instead.
 -- Tokens are four uppercase alphanumeric characters.
 create table if not exists candidates (
   id          uuid        primary key default gen_random_uuid(),
@@ -34,12 +36,9 @@ create table if not exists candidates (
   name        text        not null,
   email       text,
   phone       text,
-  panel_id    text        not null references panels (id) on update cascade,
   active      boolean     not null default true,
   created_at  timestamptz not null default now()
 );
-
-create index if not exists candidates_panel_idx on candidates (panel_id);
 
 -- A booked half-hour block on a panel ---------------------------------------
 -- slot_index 0 == 07:00, each step is 30 minutes, 25 == 19:30-20:00.
@@ -63,6 +62,14 @@ create table if not exists bookings (
 -- the API turns that into a 409.
 create unique index if not exists bookings_one_per_slot
   on bookings (panel_id, slot_date, slot_index)
+  where status = 'booked';
+
+-- A candidate may hold several bookings in a day - panels are allocated per
+-- booking - but never two panels in the same half hour. Enforced here rather
+-- than by a check-then-insert in the API, which loses the race when someone
+-- double-clicks Book and both requests read "no clash" before either inserts.
+create unique index if not exists bookings_one_per_candidate_slot
+  on bookings (candidate_id, slot_date, slot_index)
   where status = 'booked';
 
 create index if not exists bookings_day_idx
@@ -115,3 +122,8 @@ end
 $migrate$;
 
 alter table candidates add column if not exists phone text;
+
+-- Candidates used to be pinned to one panel. They are allocated per booking
+-- now, so the column and its index go.
+drop index if exists candidates_panel_idx;
+alter table candidates drop column if exists panel_id;

@@ -23,7 +23,6 @@ export async function POST(request: Request) {
       role: "candidate",
       candidateId: candidate.id,
       name: candidate.name,
-      panelId: candidate.panelId,
     });
 
     return json({ role: "candidate", redirectTo: "/book" });

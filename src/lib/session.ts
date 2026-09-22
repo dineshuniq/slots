@@ -9,7 +9,6 @@ export type CandidateSession = {
   role: "candidate";
   candidateId: string;
   name: string;
-  panelId: string;
   exp: number;
 };
 

@@ -67,41 +67,56 @@ export async function findPanel(panelId: string): Promise<Panel | null> {
   return rows[0] ? { id: rows[0].id, label: rows[0].label } : null;
 }
 
+/**
+ * Panels with nothing booked at this exact time, in display order.
+ *
+ * Availability is a consolidated figure across panels - a candidate only picks
+ * a time, and one of these panels is allocated to them.
+ */
+export async function listFreePanels(
+  date: string,
+  slotIndex: number,
+): Promise<Panel[]> {
+  const rows = await sql<PanelRow[]>`
+    select p.id, p.label
+      from panels p
+     where p.active
+       and not exists (
+             select 1
+               from bookings b
+              where b.panel_id   = p.id
+                and b.slot_date  = ${date}::date
+                and b.slot_index = ${slotIndex}
+                and b.status     = 'booked'
+           )
+     order by p.sort_order, p.id
+  `;
+  return rows.map((row) => ({ id: row.id, label: row.label }));
+}
+
 export async function listCandidates(): Promise<CandidateSummary[]> {
-  const rows = await sql<{ id: string; name: string; panel_id: string }[]>`
-    select id, name, panel_id
+  const rows = await sql<{ id: string; name: string }[]>`
+    select id, name
       from candidates
      where active
      order by name
   `;
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    panelId: row.panel_id,
-  }));
+  return rows.map((row) => ({ id: row.id, name: row.name }));
 }
 
 export async function findCandidateByToken(
   token: string,
-): Promise<(CandidateSummary & { panelLabel: string }) | null> {
-  const rows = await sql<
-    { id: string; name: string; panel_id: string; panel_label: string }[]
-  >`
-    select c.id, c.name, c.panel_id, p.label as panel_label
-      from candidates c
-      join panels p on p.id = c.panel_id
-     where c.token = ${token}
-       and c.active
+): Promise<CandidateSummary | null> {
+  const rows = await sql<{ id: string; name: string }[]>`
+    select id, name
+      from candidates
+     where token = ${token}
+       and active
      limit 1
   `;
   const row = rows[0];
   if (!row) return null;
-  return {
-    id: row.id,
-    name: row.name,
-    panelId: row.panel_id,
-    panelLabel: row.panel_label,
-  };
+  return { id: row.id, name: row.name };
 }
 
 async function bookingsFor(
@@ -126,29 +141,39 @@ async function bookingsFor(
   `;
 }
 
-/** One panel's day, as the candidate timetable renders it. */
+/**
+ * The booking day as the timetable renders it: every panel folded into one
+ * column of half-hour blocks, with the panels still free at each time.
+ */
 export async function getDayView(
   date: string,
-  panelId: string,
+  panels: Panel[],
   viewerCandidateId: string | null,
 ): Promise<Slot[]> {
-  const rows = await bookingsFor(date, panelId);
-  const bySlot = new Map<number, Booking>();
+  const rows = await bookingsFor(date, null);
+  const bySlot = new Map<number, Booking[]>();
 
   for (const row of rows) {
     const booking = toBooking(row, viewerCandidateId);
-    bySlot.set(
-      booking.slotIndex,
+    const list = bySlot.get(booking.slotIndex) ?? [];
+    list.push(
       viewerCandidateId === null ? booking : redactForCandidate(booking),
     );
+    bySlot.set(booking.slotIndex, list);
   }
 
   return ALL_SLOT_INDEXES.map<Slot>((index) => {
-    const booking = bySlot.get(index) ?? null;
+    const bookings = bySlot.get(index) ?? [];
+    const taken = new Set(bookings.map((booking) => booking.panelId));
+    const freePanelIds = panels
+      .filter((panel) => !taken.has(panel.id))
+      .map((panel) => panel.id);
+
     return {
       index,
-      status: booking ? "booked" : "available",
-      booking,
+      status: freePanelIds.length > 0 ? "available" : "booked",
+      freePanelIds,
+      bookings,
     };
   });
 }
@@ -231,7 +256,6 @@ export type CandidateRecord = {
   token: string;
   name: string;
   phone: string | null;
-  panelId: string;
   active: boolean;
   bookingCount: number;
 };
@@ -244,7 +268,6 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
       token: string;
       name: string;
       phone: string | null;
-      panel_id: string;
       active: boolean;
       booking_count: number;
     }[]
@@ -253,7 +276,6 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
            c.token,
            c.name,
            c.phone,
-           c.panel_id,
            c.active,
            count(b.id) filter (where b.status = 'booked')::int as booking_count
       from candidates c
@@ -267,7 +289,6 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
     token: row.token,
     name: row.name,
     phone: row.phone,
-    panelId: row.panel_id,
     active: row.active,
     bookingCount: Number(row.booking_count),
   }));
@@ -277,11 +298,10 @@ export async function insertCandidate(input: {
   token: string;
   name: string;
   phone: string | null;
-  panelId: string;
 }): Promise<string> {
   const rows = await sql<{ id: string }[]>`
-    insert into candidates (token, name, phone, panel_id)
-    values (${input.token}, ${input.name}, ${input.phone}, ${input.panelId})
+    insert into candidates (token, name, phone)
+    values (${input.token}, ${input.name}, ${input.phone})
     returning id
   `;
   return rows[0].id;

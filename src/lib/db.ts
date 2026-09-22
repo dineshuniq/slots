@@ -31,7 +31,12 @@ function createClient(): postgres.Sql {
   const sslDisabled = /sslmode=disable/.test(url);
 
   return postgres(url, {
-    max: 1,
+    // Must be > 1. The app issues concurrent queries (Promise.all in the
+    // schedule and candidate routes); with max: 1 postgres.js pipelines them
+    // onto a single connection, which Supabase's transaction-mode pooler
+    // mishandles. The connection then wedges permanently, and because this
+    // client is cached for the life of the process every later request hangs.
+    max: 5,
     idle_timeout: 20,
     connect_timeout: 15,
     // pgbouncer in transaction mode cannot handle named prepared statements.
@@ -85,4 +90,20 @@ export function isUniqueViolation(error: unknown): boolean {
     "code" in error &&
     (error as { code?: string }).code === UNIQUE_VIOLATION
   );
+}
+
+/** One panel cannot hold two bookings in the same half hour. */
+export const PANEL_SLOT_CONSTRAINT = "bookings_one_per_slot";
+
+/** One candidate cannot sit with two panels in the same half hour. */
+export const CANDIDATE_SLOT_CONSTRAINT = "bookings_one_per_candidate_slot";
+
+/**
+ * Which unique index a violation came from, so callers can tell "this panel is
+ * taken, try the next one" apart from "this candidate is already booked".
+ */
+export function uniqueViolationConstraint(error: unknown): string | null {
+  if (!isUniqueViolation(error)) return null;
+  const name = (error as { constraint_name?: string }).constraint_name;
+  return typeof name === "string" ? name : null;
 }
