@@ -1,0 +1,32 @@
+{
+  "name": "panel-slots",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:setup": "node --env-file-if-exists=.env.local scripts/db-setup.mjs",
+    "db:seed": "node --env-file-if-exists=.env.local scripts/db-seed.mjs"
+  },
+  "dependencies": {
+    "next": "^16.3.5",
+    "postgres": "3.4.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.13",
+    "@types/node": "22.18.1",
+    "@types/react": "19.1.13",
+    "@types/react-dom": "19.1.9",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.5",
+    "tailwindcss": "4.1.13",
+    "typescript": "5.9.2"
+  }
+}
