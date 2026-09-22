@@ -6,6 +6,11 @@
 
 create extension if not exists pgcrypto;
 
+-- Needed by the range-overlap guards on bookings: an exclusion constraint that
+-- mixes equality on plain columns with && on a range needs GiST operator
+-- classes for the plain types.
+create extension if not exists btree_gist;
+
 -- Interview panels, e.g. CELL1 / CELL2 / CELL3 -------------------------------
 create table if not exists panels (
   id          text primary key,
@@ -40,37 +45,97 @@ create table if not exists candidates (
   created_at  timestamptz not null default now()
 );
 
--- A booked half-hour block on a panel ---------------------------------------
--- slot_index 0 == 07:00, each step is 30 minutes, 25 == 19:30-20:00.
+-- A booked session on a panel -----------------------------------------------
+-- slot_index 0 == 07:00 and each step is 30 minutes, so a session runs from
+-- slot_index for slot_count blocks: 1 = 30 min, 2 = 1 hour, 3 = 90 min,
+-- 4 = 2 hours. slot_index + slot_count may not run past 20:00 (slot 26).
 create table if not exists bookings (
   id            uuid        primary key default gen_random_uuid(),
   panel_id      text        not null references panels (id) on update cascade,
   candidate_id  uuid        not null references candidates (id) on delete cascade,
   slot_date     date        not null,
   slot_index    smallint    not null check (slot_index between 0 and 25),
+  slot_count    smallint    not null default 1
+                constraint bookings_slot_count_range check (slot_count between 1 and 4),
   company_name  text        not null check (length(btrim(company_name)) > 0),
   session_type  text        not null check (session_type in ('Interview', 'Assessment')),
   status        text        not null default 'booked' check (status in ('booked', 'cancelled')),
   booked_by     text        not null default 'candidate' check (booked_by in ('candidate', 'controller')),
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
-  cancelled_at  timestamptz
+  cancelled_at  timestamptz,
+  constraint bookings_within_day check (slot_index + slot_count <= 26)
 );
 
--- This index is what actually prevents double-booking. Two concurrent requests
--- for the same panel/date/slot cannot both commit; the loser gets a 23505 and
--- the API turns that into a 409.
-create unique index if not exists bookings_one_per_slot
-  on bookings (panel_id, slot_date, slot_index)
-  where status = 'booked';
+-- Migrations for databases created before sessions had a length. These run
+-- before the constraints below, which reference slot_count.
+alter table bookings add column if not exists slot_count smallint not null default 1;
 
--- A candidate may hold several bookings in a day - panels are allocated per
--- booking - but never two panels in the same half hour. Enforced here rather
--- than by a check-then-insert in the API, which loses the race when someone
--- double-clicks Book and both requests read "no clash" before either inserts.
-create unique index if not exists bookings_one_per_candidate_slot
-  on bookings (candidate_id, slot_date, slot_index)
-  where status = 'booked';
+do $length_checks$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'bookings_slot_count_range'
+  ) then
+    alter table bookings add constraint bookings_slot_count_range
+      check (slot_count between 1 and 4);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'bookings_within_day'
+  ) then
+    alter table bookings add constraint bookings_within_day
+      check (slot_index + slot_count <= 26);
+  end if;
+end
+$length_checks$;
+
+-- The old single-slot unique indexes cannot express range overlap, so they are
+-- replaced rather than kept alongside.
+drop index if exists bookings_one_per_slot;
+drop index if exists bookings_one_per_candidate_slot;
+
+-- These two exclusion constraints are what actually prevent double-booking.
+--
+-- A unique index cannot do this job once sessions have a length: a 2-hour
+-- booking at 09:00 and a 30-minute one at 10:00 have different slot_index
+-- values, so a unique index on slot_index would wave both through. The
+-- half-open range [slot_index, slot_index + slot_count) with && catches the
+-- overlap, and abutting sessions (one ending where the next starts) are fine.
+--
+-- Concurrency is handled by the database, not by a check-then-insert in the
+-- API, which loses the race when two requests both read "no clash" before
+-- either inserts. The loser gets a 23P01 and the API turns that into a 409.
+do $panel_overlap$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'bookings_no_panel_overlap'
+  ) then
+    alter table bookings add constraint bookings_no_panel_overlap
+      exclude using gist (
+        panel_id  with =,
+        slot_date with =,
+        int4range(slot_index, slot_index + slot_count) with &&
+      ) where (status = 'booked');
+  end if;
+end
+$panel_overlap$;
+
+-- A candidate may hold several sessions in a day - panels are allocated per
+-- booking - but never two that overlap in time.
+do $candidate_overlap$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'bookings_no_candidate_overlap'
+  ) then
+    alter table bookings add constraint bookings_no_candidate_overlap
+      exclude using gist (
+        candidate_id with =,
+        slot_date    with =,
+        int4range(slot_index, slot_index + slot_count) with &&
+      ) where (status = 'booked');
+  end if;
+end
+$candidate_overlap$;
 
 create index if not exists bookings_day_idx
   on bookings (slot_date, panel_id)

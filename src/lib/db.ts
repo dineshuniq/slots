@@ -80,30 +80,58 @@ export const sql: postgres.Sql = new Proxy(
   },
 );
 
-/** Postgres unique-violation, raised by the one-booking-per-slot index. */
+/** Postgres unique-violation. */
 export const UNIQUE_VIOLATION = "23505";
 
-export function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: string }).code === UNIQUE_VIOLATION
-  );
-}
-
-/** One panel cannot hold two bookings in the same half hour. */
-export const PANEL_SLOT_CONSTRAINT = "bookings_one_per_slot";
-
-/** One candidate cannot sit with two panels in the same half hour. */
-export const CANDIDATE_SLOT_CONSTRAINT = "bookings_one_per_candidate_slot";
+/**
+ * Postgres exclusion-violation, raised by the range-overlap guards on
+ * bookings. Sessions have a length, so overlap is enforced by an exclusion
+ * constraint rather than a unique index - and that reports 23P01, not 23505.
+ */
+export const EXCLUSION_VIOLATION = "23P01";
 
 /**
- * Which unique index a violation came from, so callers can tell "this panel is
+ * Postgres deadlock. Two concurrent inserts for the same time can each end up
+ * waiting on the other's uncommitted row while the exclusion constraint is
+ * checked; Postgres breaks the cycle by aborting one. It is transient, and the
+ * caller is expected to retry.
+ */
+export const DEADLOCK = "40P01";
+
+export function isDeadlock(error: unknown): boolean {
+  return errorCode(error) === DEADLOCK;
+}
+
+function errorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  const code = (error as { code?: string }).code;
+  return typeof code === "string" ? code : null;
+}
+
+export function isUniqueViolation(error: unknown): boolean {
+  return errorCode(error) === UNIQUE_VIOLATION;
+}
+
+/** Either kind of "something already occupies this" conflict. */
+export function isConflictViolation(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === UNIQUE_VIOLATION || code === EXCLUSION_VIOLATION;
+}
+
+/** A panel cannot run two overlapping sessions. */
+export const PANEL_OVERLAP_CONSTRAINT = "bookings_no_panel_overlap";
+
+/** A candidate cannot sit in two overlapping sessions. */
+export const CANDIDATE_OVERLAP_CONSTRAINT = "bookings_no_candidate_overlap";
+
+/**
+ * Which constraint a conflict came from, so callers can tell "this panel is
  * taken, try the next one" apart from "this candidate is already booked".
  */
-export function uniqueViolationConstraint(error: unknown): string | null {
-  if (!isUniqueViolation(error)) return null;
+export function conflictConstraint(error: unknown): string | null {
+  if (!isConflictViolation(error)) return null;
   const name = (error as { constraint_name?: string }).constraint_name;
   return typeof name === "string" ? name : null;
 }

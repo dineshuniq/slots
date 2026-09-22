@@ -1,5 +1,5 @@
 import { sql } from "@/lib/db";
-import { ALL_SLOT_INDEXES } from "@/lib/time";
+import { ALL_SLOT_INDEXES, coveredSlots } from "@/lib/time";
 import type {
   Booking,
   CandidateSummary,
@@ -19,6 +19,7 @@ type BookingRow = {
   session_type: SessionType;
   slot_date: string;
   slot_index: number;
+  slot_count: number;
 };
 
 function toBooking(row: BookingRow, viewerCandidateId: string | null): Booking {
@@ -31,6 +32,7 @@ function toBooking(row: BookingRow, viewerCandidateId: string | null): Booking {
     sessionType: row.session_type,
     slotDate: row.slot_date,
     slotIndex: Number(row.slot_index),
+    slotCount: Number(row.slot_count),
     isOwn: viewerCandidateId !== null && row.candidate_id === viewerCandidateId,
   };
 }
@@ -73,9 +75,17 @@ export async function findPanel(panelId: string): Promise<Panel | null> {
  * Availability is a consolidated figure across panels - a candidate only picks
  * a time, and one of these panels is allocated to them.
  */
+/**
+ * Panels with nothing overlapping [slotIndex, slotIndex + slotCount), in
+ * allocation order - lowest sort_order first.
+ *
+ * The overlap test has to be a range comparison: a 2-hour session starting at
+ * 09:00 blocks 10:00 even though its slot_index is different.
+ */
 export async function listFreePanels(
   date: string,
   slotIndex: number,
+  slotCount: number,
 ): Promise<Panel[]> {
   const rows = await sql<PanelRow[]>`
     select p.id, p.label
@@ -84,15 +94,17 @@ export async function listFreePanels(
        and not exists (
              select 1
                from bookings b
-              where b.panel_id   = p.id
-                and b.slot_date  = ${date}::date
-                and b.slot_index = ${slotIndex}
-                and b.status     = 'booked'
+              where b.panel_id  = p.id
+                and b.slot_date = ${date}::date
+                and b.status    = 'booked'
+                and int4range(b.slot_index, b.slot_index + b.slot_count)
+                 && int4range(${slotIndex}::int, ${slotIndex}::int + ${slotCount}::int)
            )
      order by p.sort_order, p.id
   `;
   return rows.map((row) => ({ id: row.id, label: row.label }));
 }
+
 
 export async function listCandidates(): Promise<CandidateSummary[]> {
   const rows = await sql<{ id: string; name: string }[]>`
@@ -131,7 +143,8 @@ async function bookingsFor(
            b.company_name,
            b.session_type,
            to_char(b.slot_date, 'YYYY-MM-DD') as slot_date,
-           b.slot_index
+           b.slot_index,
+           b.slot_count
       from bookings b
       join candidates c on c.id = b.candidate_id
      where b.status = 'booked'
@@ -155,11 +168,17 @@ export async function getDayView(
 
   for (const row of rows) {
     const booking = toBooking(row, viewerCandidateId);
-    const list = bySlot.get(booking.slotIndex) ?? [];
-    list.push(
-      viewerCandidateId === null ? booking : redactForCandidate(booking),
-    );
-    bySlot.set(booking.slotIndex, list);
+    const visible =
+      viewerCandidateId === null ? booking : redactForCandidate(booking);
+
+    // A 2-hour session blocks all four of its half-hour blocks, so it is
+    // listed against each one. Callers that want it once can filter on
+    // booking.slotIndex === slot.index.
+    for (const index of coveredSlots(booking.slotIndex, booking.slotCount)) {
+      const list = bySlot.get(index) ?? [];
+      list.push(visible);
+      bySlot.set(index, list);
+    }
   }
 
   return ALL_SLOT_INDEXES.map<Slot>((index) => {

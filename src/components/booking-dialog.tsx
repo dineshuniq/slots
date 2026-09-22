@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { longDateLabel, slotRangeLabel } from "@/lib/time";
+import { durationLabel, longDateLabel, sessionRangeLabel } from "@/lib/time";
 import {
   SESSION_TYPES,
   type CandidateSummary,
@@ -13,7 +13,9 @@ import {
 export type BookingTarget = {
   dateKey: string;
   slotIndex: number;
-  /** Panels still free at this slot, best choice first. */
+  /** Length in half-hour blocks: 1 = 30 min ... 4 = 2 hours. */
+  slotCount: number;
+  /** Panels free for the WHOLE session, best choice first. */
   panelIds: string[];
 };
 
@@ -86,6 +88,7 @@ export default function BookingDialog({
         body: JSON.stringify({
           date: target.dateKey,
           slotIndex: target.slotIndex,
+          slotCount: target.slotCount,
           companyName: companyName.trim(),
           sessionType,
           ...(role === "controller" ? { candidateId, panelId } : {}),
@@ -127,7 +130,11 @@ export default function BookingDialog({
           Book this slot
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          {slotRangeLabel(target.slotIndex)} on {longDateLabel(target.dateKey)}
+          {sessionRangeLabel(target.slotIndex, target.slotCount)} on{" "}
+          {longDateLabel(target.dateKey)}
+          <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
+            {durationLabel(target.slotCount)}
+          </span>
         </p>
 
         <form onSubmit={submit} className="mt-5 space-y-4">

@@ -28,6 +28,8 @@ export type Booking = {
   sessionType: SessionType;
   slotDate: string;
   slotIndex: number;
+  /** Length in half-hour blocks: 1 = 30 min ... 4 = 2 hours. */
+  slotCount: number;
   isOwn: boolean;
 };
 

@@ -18,6 +18,14 @@ export const WINDOW_DAYS_BACK = 1;
 export const WINDOW_DAYS_FORWARD = 6;
 export const WINDOW_LENGTH = WINDOW_DAYS_BACK + 1 + WINDOW_DAYS_FORWARD; // 8
 
+/**
+ * Locale for every rendered date. Pinned rather than left to the runtime:
+ * the server and the browser otherwise disagree ("September 22, 2026" vs
+ * "22 September 2026"), which is a hydration mismatch in any client component
+ * that formats a date.
+ */
+export const SCHEDULE_LOCALE = "en-GB";
+
 /** IANA zone, or undefined to fall back to each runtime's local time. */
 export const SCHEDULE_TIMEZONE: string | undefined =
   process.env.NEXT_PUBLIC_SCHEDULE_TIMEZONE || undefined;
@@ -155,9 +163,9 @@ export function buildDateWindow(instant: Date = new Date()): CarouselDay[] {
     const date = fromDateKey(key);
     return {
       key,
-      weekday: date.toLocaleDateString(undefined, { weekday: "short" }),
+      weekday: date.toLocaleDateString(SCHEDULE_LOCALE, { weekday: "short" }),
       dayOfMonth: String(date.getDate()),
-      month: date.toLocaleDateString(undefined, { month: "short" }),
+      month: date.toLocaleDateString(SCHEDULE_LOCALE, { month: "short" }),
       isToday: key === today,
       isPast: key < today,
     };
@@ -174,7 +182,7 @@ export function isDateInWindow(key: string, instant: Date = new Date()): boolean
 }
 
 export function longDateLabel(key: string): string {
-  return fromDateKey(key).toLocaleDateString(undefined, {
+  return fromDateKey(key).toLocaleDateString(SCHEDULE_LOCALE, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -192,4 +200,73 @@ export function isSlotInPast(
   if (dateKey < today) return true;
   if (dateKey > today) return false;
   return slotStartMinutes(index) + SLOT_MINUTES <= nowMinutes(instant);
+}
+
+// --- session length ---------------------------------------------------------
+
+/**
+ * Sessions are a whole number of half-hour blocks. The menu is fixed so the
+ * choice is easy to present and easy to validate; widen MAX_SLOT_COUNT and
+ * DURATION_CHOICES together, and keep them in step with the slot_count check
+ * constraint in db/schema.sql.
+ */
+export const MAX_SLOT_COUNT = 4;
+
+export type DurationChoice = { slots: number; label: string };
+
+export const DURATION_CHOICES: DurationChoice[] = [
+  { slots: 1, label: "30 min" },
+  { slots: 2, label: "1 hour" },
+  { slots: 3, label: "90 min" },
+  { slots: 4, label: "2 hours" },
+];
+
+export function isValidSlotCount(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= MAX_SLOT_COUNT
+  );
+}
+
+export function durationLabel(slotCount: number): string {
+  return (
+    DURATION_CHOICES.find((choice) => choice.slots === slotCount)?.label ??
+    `${slotCount * SLOT_MINUTES} min`
+  );
+}
+
+/** End-of-session label, e.g. slot 4 for 4 blocks ends at "11:00 AM". */
+export function sessionEndLabel(index: number, slotCount: number): string {
+  return slotEndLabel(index + slotCount - 1);
+}
+
+/** "9:00 AM - 11:00 AM" for the whole session, not just the first block. */
+export function sessionRangeLabel(index: number, slotCount: number): string {
+  return `${slotStartLabel(index)} \u2013 ${sessionEndLabel(index, slotCount)}`;
+}
+
+/** The blocks a session covers: [index, index + slotCount). */
+export function coveredSlots(index: number, slotCount: number): number[] {
+  return Array.from({ length: slotCount }, (_, offset) => index + offset);
+}
+
+/** A session of this length starting here must finish before 20:00. */
+export function fitsInDay(index: number, slotCount: number): boolean {
+  return index + slotCount <= SLOT_COUNT;
+}
+
+/**
+ * Whether a session of this length can still be started at this block: it has
+ * to fit in the day and must not have begun already.
+ */
+export function canStartAt(
+  dateKey: string,
+  index: number,
+  slotCount: number,
+  instant: Date = new Date(),
+): boolean {
+  if (!fitsInDay(index, slotCount)) return false;
+  return !isSlotInPast(dateKey, index, instant);
 }

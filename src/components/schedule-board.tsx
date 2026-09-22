@@ -7,8 +7,13 @@ import DateCarousel from "@/components/date-carousel";
 import SlotLegend from "@/components/slot-legend";
 import {
   ALL_SLOT_INDEXES,
+  coveredSlots,
+  DURATION_CHOICES,
+  durationLabel,
+  fitsInDay,
   isSlotInPast,
   longDateLabel,
+  sessionRangeLabel,
   slotEndLabel,
   slotStartLabel,
   type CarouselDay,
@@ -45,6 +50,7 @@ export default function ScheduleBoard({
   today,
 }: Props) {
   const [dateKey, setDateKey] = useState(today);
+  const [slotCount, setSlotCount] = useState(1);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [target, setTarget] = useState<BookingTarget | null>(null);
@@ -61,13 +67,35 @@ export default function ScheduleBoard({
   const panels = data?.panels ?? initialPanels;
   const bookings = useMemo(() => data?.bookings ?? [], [data]);
 
-  const byCell = useMemo(() => {
+  /** The cell a session starts in - the only one that renders a chip. */
+  const startAt = useMemo(() => {
     const map = new Map<string, Booking>();
     for (const booking of bookings) {
       map.set(cellKey(booking.panelId, booking.slotIndex), booking);
     }
     return map;
   }, [bookings]);
+
+  /** Every cell a session covers, so the rest are not drawn as free. */
+  const occupied = useMemo(() => {
+    const set = new Set<string>();
+    for (const booking of bookings) {
+      for (const index of coveredSlots(booking.slotIndex, booking.slotCount)) {
+        set.add(cellKey(booking.panelId, index));
+      }
+    }
+    return set;
+  }, [bookings]);
+
+  /** A panel is free for a new session only if every block it needs is clear. */
+  const freeForRange = useCallback(
+    (panelId: string, start: number, count: number) =>
+      fitsInDay(start, count) &&
+      coveredSlots(start, count).every(
+        (index) => !occupied.has(cellKey(panelId, index)),
+      ),
+    [occupied],
+  );
 
   const movingBooking = movingId
     ? (bookings.find((booking) => booking.id === movingId) ?? null)
@@ -144,16 +172,23 @@ export default function ScheduleBoard({
       return;
     }
 
-    // The clicked cell leads, but the dialog may still move the booking to
-    // another panel that is free at this time.
-    const free = panels
+    if (!freeForRange(panelId, slotIndex, slotCount)) {
+      setNotice(
+        `A ${durationLabel(slotCount)} session does not fit here - something else is in the way.`,
+      );
+      return;
+    }
+
+    // The clicked cell leads, but the dialog may still place the session on
+    // another panel that is free for the whole of it.
+    const others = panels
       .filter(
         (panel) =>
-          panel.id !== panelId && !byCell.has(cellKey(panel.id, slotIndex)),
+          panel.id !== panelId && freeForRange(panel.id, slotIndex, slotCount),
       )
       .map((panel) => panel.id);
 
-    setTarget({ dateKey, slotIndex, panelIds: [panelId, ...free] });
+    setTarget({ dateKey, slotIndex, slotCount, panelIds: [panelId, ...others] });
   }
 
   const countsByPanel = useMemo(() => {
@@ -184,6 +219,38 @@ export default function ScheduleBoard({
 
       <section className="mt-5">
         <DateCarousel days={days} selected={dateKey} onSelect={setDateKey} />
+      </section>
+
+      <section className="mt-4 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-slate-700">
+          New session length
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {DURATION_CHOICES.map((choice) => (
+            <label
+              key={choice.slots}
+              className={
+                slotCount === choice.slots
+                  ? "cursor-pointer rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition"
+                  : "cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400"
+              }
+            >
+              <input
+                type="radio"
+                name="controllerSlotCount"
+                value={choice.slots}
+                checked={slotCount === choice.slots}
+                onChange={() => setSlotCount(choice.slots)}
+                className="sr-only"
+              />
+              {choice.label}
+            </label>
+          ))}
+        </div>
+        <span className="text-xs text-slate-500">
+          Applies to sessions you add from an empty cell. Moving a session keeps
+          its length.
+        </span>
       </section>
 
       {error ? (
@@ -223,12 +290,16 @@ export default function ScheduleBoard({
       <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="thin-scroll max-h-[72vh] overflow-auto">
           <div className="grid min-w-max" style={{ gridTemplateColumns }}>
-            <div className="sticky top-0 left-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold tracking-wider text-slate-500 uppercase">
+            <div
+              style={{ gridColumn: 1, gridRow: 1 }}
+              className="sticky top-0 left-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold tracking-wider text-slate-500 uppercase"
+            >
               Time
             </div>
-            {panels.map((panel) => (
+            {panels.map((panel, column) => (
               <div
                 key={panel.id}
+                style={{ gridColumn: column + 2, gridRow: 1 }}
                 className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3 text-center"
               >
                 <p className="text-sm font-bold tracking-tight text-slate-900">
@@ -240,136 +311,142 @@ export default function ScheduleBoard({
               </div>
             ))}
 
-            {ALL_SLOT_INDEXES.map((slotIndex) => {
-              const past = slotIsPast(slotIndex);
-              return (
-                <div key={slotIndex} className="contents">
-                  <div
-                    className={`sticky left-0 z-10 border-r border-b border-slate-100 px-3 py-2 text-right ${
-                      past ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold tabular-nums">
-                      {slotStartLabel(slotIndex)}
-                    </p>
-                    <p className="text-[10px] tabular-nums opacity-70">
-                      {slotEndLabel(slotIndex)}
-                    </p>
-                  </div>
+            {ALL_SLOT_INDEXES.map((slotIndex) => (
+              <div
+                key={`time-${slotIndex}`}
+                style={{ gridColumn: 1, gridRow: slotIndex + 2 }}
+                className={`sticky left-0 z-10 border-r border-b border-slate-100 px-3 py-2 text-right ${slotIsPast(slotIndex) ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"}`}
+              >
+                <p className="text-xs font-semibold tabular-nums">
+                  {slotStartLabel(slotIndex)}
+                </p>
+                <p className="text-[10px] tabular-nums opacity-70">
+                  {slotEndLabel(slotIndex)}
+                </p>
+              </div>
+            ))}
 
-                  {panels.map((panel) => {
-                    const key = cellKey(panel.id, slotIndex);
-                    const booking = byCell.get(key);
-                    const isDropTarget = dropTarget === key;
+            {ALL_SLOT_INDEXES.flatMap((slotIndex) =>
+              panels.map((panel, column) => {
+                const key = cellKey(panel.id, slotIndex);
+                const booking = startAt.get(key);
+                const past = slotIsPast(slotIndex);
 
-                    if (booking) {
-                      const isMoving = movingId === booking.id;
-                      return (
-                        <div
-                          key={key}
-                          className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
-                        >
-                          <div
-                            draggable={!busy}
-                            onDragStart={(event) => {
-                              event.dataTransfer.setData("text/plain", booking.id);
-                              event.dataTransfer.effectAllowed = "move";
-                              setMovingId(booking.id);
-                            }}
-                            onDragEnd={() => setDropTarget(null)}
-                            onClick={() =>
-                              setMovingId(isMoving ? null : booking.id)
-                            }
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                setMovingId(isMoving ? null : booking.id);
-                              }
-                            }}
-                            title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType}`}
-                            className={`group h-full cursor-grab rounded-lg border px-2.5 py-2 transition active:cursor-grabbing ${
-                              isMoving
-                                ? "border-sky-500 bg-sky-50 ring-2 ring-sky-300"
-                                : "border-rose-200 bg-rose-50 hover:border-rose-400"
-                            }`}
-                          >
-                            <div className="flex items-start gap-1.5">
-                              <span
-                                aria-hidden
-                                className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-xs font-semibold text-slate-900">
-                                  {booking.candidateName}
-                                </p>
-                                <p className="truncate text-[11px] text-slate-600">
-                                  {booking.companyName}
-                                </p>
-                                <p className="mt-0.5 inline-block rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                                  {booking.sessionType}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                aria-label={`Cancel booking for ${booking.candidateName}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void cancelBooking(booking);
-                                }}
-                                className="shrink-0 rounded px-1 text-sm leading-none text-slate-400 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
-                              >
-                                &times;
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
+                // Covered by a session that started higher up: the chip above
+                // spans over this cell, so nothing is drawn here at all.
+                if (!booking && occupied.has(key)) return null;
 
-                    return (
+                const placement = {
+                  gridColumn: column + 2,
+                  gridRow: booking
+                    ? `${slotIndex + 2} / span ${booking.slotCount}`
+                    : slotIndex + 2,
+                };
+
+                if (booking) {
+                  const isMoving = movingId === booking.id;
+                  return (
+                    <div
+                      key={key}
+                      style={placement}
+                      className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
+                    >
                       <div
-                        key={key}
-                        onDragOver={(event) => {
-                          if (!movingId) return;
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "move";
-                          setDropTarget(key);
+                        draggable={!busy}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData("text/plain", booking.id);
+                          event.dataTransfer.effectAllowed = "move";
+                          setMovingId(booking.id);
                         }}
-                        onDragLeave={() =>
-                          setDropTarget((current) =>
-                            current === key ? null : current,
-                          )
-                        }
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const bookingId =
-                            event.dataTransfer.getData("text/plain") || movingId;
-                          if (bookingId) void move(bookingId, panel.id, slotIndex);
+                        onDragEnd={() => setDropTarget(null)}
+                        onClick={() => setMovingId(isMoving ? null : booking.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setMovingId(isMoving ? null : booking.id);
+                          }
                         }}
-                        className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
+                        title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
+                        className={`group flex h-full cursor-grab flex-col rounded-lg border px-2.5 py-2 transition active:cursor-grabbing ${isMoving ? "border-sky-500 bg-sky-50 ring-2 ring-sky-300" : "border-rose-200 bg-rose-50 hover:border-rose-400"}`}
                       >
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleEmptyCellClick(panel.id, slotIndex)}
-                          className={`h-full min-h-[3.25rem] w-full rounded-lg border border-dashed text-[11px] transition ${
-                            isDropTarget
-                              ? "border-sky-500 bg-sky-100 text-sky-800"
-                              : movingId
-                                ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100"
-                                : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                          }`}
-                        >
-                          {movingId ? "Place here" : "Add"}
-                        </button>
+                        <div className="flex items-start gap-1.5">
+                          <span
+                            aria-hidden
+                            className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-slate-900">
+                              {booking.candidateName}
+                            </p>
+                            <p className="truncate text-[11px] text-slate-600">
+                              {booking.companyName}
+                            </p>
+                            <p className="mt-0.5 inline-block rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                              {booking.sessionType}
+                            </p>
+                            {booking.slotCount > 1 ? (
+                              <p className="mt-1 text-[10px] font-medium tabular-nums text-slate-500">
+                                {durationLabel(booking.slotCount)} &middot;{" "}
+                                {sessionRangeLabel(
+                                  booking.slotIndex,
+                                  booking.slotCount,
+                                )}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            aria-label={`Cancel booking for ${booking.candidateName}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void cancelBooking(booking);
+                            }}
+                            className="shrink-0 rounded px-1 text-sm leading-none text-slate-400 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
+                          >
+                            &times;
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                }
+
+                const isDropTarget = dropTarget === key;
+                return (
+                  <div
+                    key={key}
+                    style={placement}
+                    onDragOver={(event) => {
+                      if (!movingId) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDropTarget(key);
+                    }}
+                    onDragLeave={() =>
+                      setDropTarget((current) => (current === key ? null : current))
+                    }
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const bookingId =
+                        event.dataTransfer.getData("text/plain") || movingId;
+                      if (bookingId) void move(bookingId, panel.id, slotIndex);
+                    }}
+                    className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleEmptyCellClick(panel.id, slotIndex)}
+                      className={`h-full min-h-[3.25rem] w-full rounded-lg border border-dashed text-[11px] transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"}`}
+                    >
+                      {movingId ? "Place here" : "Add"}
+                    </button>
+                  </div>
+                );
+              }),
+            )}
           </div>
         </div>
       </section>
@@ -382,7 +459,7 @@ export default function ScheduleBoard({
 
       {target ? (
         <BookingDialog
-          key={`${target.dateKey}:${target.slotIndex}:${target.panelIds[0]}`}
+          key={`${target.dateKey}:${target.slotIndex}:${target.slotCount}`}
           target={target}
           role="controller"
           panels={panels}

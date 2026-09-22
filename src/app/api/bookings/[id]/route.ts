@@ -1,8 +1,14 @@
-import { isUniqueViolation, sql } from "@/lib/db";
+import { isConflictViolation, sql } from "@/lib/db";
 import { fail, forbidden, json, readJson, readString, serverError, unauthorized } from "@/lib/http";
 import { findPanel } from "@/lib/queries";
 import { getSession } from "@/lib/session";
-import { isDateInWindow, isSlotInPast, isValidDateKey, isValidSlotIndex } from "@/lib/time";
+import {
+  fitsInDay,
+  isDateInWindow,
+  isSlotInPast,
+  isValidDateKey,
+  isValidSlotIndex,
+} from "@/lib/time";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,6 +18,7 @@ type BookingRow = {
   candidate_id: string;
   slot_date: string;
   slot_index: number;
+  slot_count: number;
 };
 
 async function loadBooking(id: string): Promise<BookingRow | null> {
@@ -20,7 +27,8 @@ async function loadBooking(id: string): Promise<BookingRow | null> {
            panel_id,
            candidate_id,
            to_char(slot_date, 'YYYY-MM-DD') as slot_date,
-           slot_index
+           slot_index,
+           slot_count
       from bookings
      where id = ${id}
        and status = 'booked'
@@ -59,6 +67,11 @@ export async function PATCH(request: Request, { params }: Params) {
       body.slotIndex === undefined ? booking.slot_index : body.slotIndex;
     if (!isValidSlotIndex(slotIndex)) return fail("Invalid time slot.", 400);
 
+    // Length is fixed on a move; only where it sits changes.
+    if (!fitsInDay(slotIndex, booking.slot_count)) {
+      return fail("A session that long does not fit before 8:00 PM.", 400);
+    }
+
     const panelId = readString(body, "panelId") || booking.panel_id;
     const panel = await findPanel(panelId);
     if (!panel) return fail("Unknown panel.", 404);
@@ -92,8 +105,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
     return json({ id: booking.id, moved: true });
   } catch (error) {
-    if (isUniqueViolation(error)) {
-      return fail("That destination slot is already taken.", 409);
+    if (isConflictViolation(error)) {
+      return fail("That destination overlaps a session already there.", 409);
     }
     return serverError(error);
   }
