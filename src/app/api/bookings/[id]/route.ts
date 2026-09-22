@@ -73,6 +73,13 @@ export async function PATCH(request: Request, { params }: Params) {
       body.slotIndex === undefined ? booking.slot_index : body.slotIndex;
     if (!isValidSlotIndex(slotIndex)) return fail("Invalid time slot.", 400);
 
+    if (isSlotInPast(booking.slot_date, booking.slot_index)) {
+      return fail("That session has already taken place.", 400);
+    }
+    if (isSlotInPast(date, slotIndex)) {
+      return fail("That time has already passed.", 400);
+    }
+
     // Length is fixed on a move; only where it sits changes.
     if (!fitsInDay(slotIndex, booking.slot_count)) {
       return fail("A session that long does not fit before 8:00 PM.", 400);
@@ -151,11 +158,15 @@ export async function DELETE(_request: Request, { params }: Params) {
     const booking = await loadBooking(id);
     if (!booking) return fail("Unknown booking.", 404);
 
-    if (session.role === "candidate") {
-      if (booking.candidate_id !== session.candidateId) return forbidden();
-      if (isSlotInPast(booking.slot_date, booking.slot_index)) {
-        return fail("That session has already taken place.", 400);
-      }
+    if (isSlotInPast(booking.slot_date, booking.slot_index)) {
+      return fail("That session has already taken place.", 400);
+    }
+
+    if (
+      session.role === "candidate" &&
+      booking.candidate_id !== session.candidateId
+    ) {
+      return forbidden();
     }
 
     await sql`

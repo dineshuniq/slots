@@ -76,10 +76,11 @@ export async function POST(request: Request) {
     let candidateId: string;
     let candidateName = "";
 
+    if (isSlotInPast(date, slotIndex)) {
+      return fail("That time has already passed.", 400);
+    }
+
     if (session.role === "candidate") {
-      if (isSlotInPast(date, slotIndex)) {
-        return fail("That time has already passed.", 400);
-      }
       candidateId = session.candidateId;
       candidateName = session.name;
     } else {

@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import BookingDialog, { type BookingTarget } from "@/components/booking-dialog";
-import DateCarousel from "@/components/date-carousel";
-import SlotLegend from "@/components/slot-legend";
 import {
   ALL_SLOT_INDEXES,
   coveredSlots,
-  DURATION_CHOICES,
   durationLabel,
   fitsInDay,
   isSlotInPast,
   longDateLabel,
   sessionRangeLabel,
   slotEndLabel,
+  shiftDateKey,
   slotStartLabel,
   type CarouselDay,
 } from "@/lib/time";
@@ -38,6 +36,12 @@ type Props = {
 
 const cellKey = (panelId: string, slotIndex: number) => `${panelId}:${slotIndex}`;
 
+const QUICK_DAYS = [
+  { label: "Yesterday", offset: -1 },
+  { label: "Today", offset: 0 },
+  { label: "Tomorrow", offset: 1 },
+];
+
 /**
  * Controller Schedule view: panels across, half-hour slots down.
  *
@@ -52,7 +56,6 @@ export default function ScheduleBoard({
   today,
 }: Props) {
   const [dateKey, setDateKey] = useState(today);
-  const [slotCount, setSlotCount] = useState(1);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [target, setTarget] = useState<BookingTarget | null>(null);
@@ -250,29 +253,33 @@ export default function ScheduleBoard({
   }
 
 
+  /** Panels free for a whole session, the clicked one first if it qualifies. */
+  const panelsFreeFor = useCallback(
+    (slotIndex: number, count: number, preferred?: string) => {
+      const free = panels
+        .filter((panel) => freeForRange(panel.id, slotIndex, count))
+        .map((panel) => panel.id);
+      return preferred && free.includes(preferred)
+        ? [preferred, ...free.filter((id) => id !== preferred)]
+        : free;
+    },
+    [panels, freeForRange],
+  );
+
   function handleEmptyCellClick(panelId: string, slotIndex: number) {
     if (movingId) {
       void move(movingId, panelId, slotIndex);
       return;
     }
 
-    if (!freeForRange(panelId, slotIndex, slotCount)) {
-      setNotice(
-        `A ${durationLabel(slotCount)} session does not fit here - something else is in the way.`,
-      );
-      return;
-    }
-
-    // The clicked cell leads, but the dialog may still place the session on
-    // another panel that is free for the whole of it.
-    const others = panels
-      .filter(
-        (panel) =>
-          panel.id !== panelId && freeForRange(panel.id, slotIndex, slotCount),
-      )
-      .map((panel) => panel.id);
-
-    setTarget({ dateKey, slotIndex, slotCount, panelIds: [panelId, ...others] });
+    // The clicked cell leads; the dialog may still move it to another panel,
+    // and recomputes the list whenever the length changes there.
+    setTarget({
+      dateKey,
+      slotIndex,
+      slotCount: 1,
+      panelIds: panelsFreeFor(slotIndex, 1, panelId),
+    });
   }
 
   const countsByPanel = useMemo(() => {
@@ -287,55 +294,48 @@ export default function ScheduleBoard({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Schedule
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {longDateLabel(dateKey)} &middot; {bookings.length} session
-            {bookings.length === 1 ? "" : "s"} across {panels.length} panel
-            {panels.length === 1 ? "" : "s"}
-          </p>
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+          {QUICK_DAYS.map((day) => {
+            const key = shiftDateKey(today, day.offset);
+            const selected = key === dateKey;
+            return (
+              <button
+                key={day.label}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setDateKey(key)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                  selected
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                {day.label}
+              </button>
+            );
+          })}
         </div>
-        <SlotLegend />
+
+        {/* Candidates can book six days out, so the grid still has to reach
+            them; a date field does that without another eight-tile strip. */}
+        <input
+          type="date"
+          aria-label="Another date"
+          value={dateKey}
+          min={days[0]?.key}
+          max={days[days.length - 1]?.key}
+          onChange={(event) => {
+            if (event.target.value) setDateKey(event.target.value);
+          }}
+          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-900"
+        />
+
+        <p className="text-sm text-slate-600">
+          {longDateLabel(dateKey)} &middot; {bookings.length} session
+          {bookings.length === 1 ? "" : "s"}
+        </p>
       </header>
-
-      <section className="mt-5">
-        <DateCarousel days={days} selected={dateKey} onSelect={setDateKey} />
-      </section>
-
-      <section className="mt-4 flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-slate-700">
-          New session length
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {DURATION_CHOICES.map((choice) => (
-            <label
-              key={choice.slots}
-              className={
-                slotCount === choice.slots
-                  ? "cursor-pointer rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition"
-                  : "cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400"
-              }
-            >
-              <input
-                type="radio"
-                name="controllerSlotCount"
-                value={choice.slots}
-                checked={slotCount === choice.slots}
-                onChange={() => setSlotCount(choice.slots)}
-                className="sr-only"
-              />
-              {choice.label}
-            </label>
-          ))}
-        </div>
-        <span className="text-xs text-slate-500">
-          Applies to sessions you add from an empty cell. Moving a session keeps
-          its length.
-        </span>
-      </section>
 
       {error ? (
         <p
@@ -456,24 +456,28 @@ export default function ScheduleBoard({
                       className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
                     >
                       <div
-                        draggable={!busy}
+                        draggable={!busy && !past}
                         onDragStart={(event) => {
                           event.dataTransfer.setData("text/plain", booking.id);
                           event.dataTransfer.effectAllowed = "move";
                           setMovingId(booking.id);
                         }}
                         onDragEnd={() => setDropTarget(null)}
-                        onClick={() => setMovingId(isMoving ? null : booking.id)}
-                        role="button"
-                        tabIndex={0}
+                        onClick={() => {
+                          if (past) return;
+                          setMovingId(isMoving ? null : booking.id);
+                        }}
+                        role={past ? undefined : "button"}
+                        tabIndex={past ? undefined : 0}
                         onKeyDown={(event) => {
+                          if (past) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             setMovingId(isMoving ? null : booking.id);
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group flex h-full cursor-grab flex-col rounded-lg border px-2.5 py-2 transition active:cursor-grabbing ${isMoving ? "border-sky-500 bg-sky-50 ring-2 ring-sky-300" : `${TONES.booked.card} hover:border-rose-400`}`}
+                        className={`group flex h-full flex-col rounded-lg border px-2.5 py-2 transition ${past ? `cursor-default ${TONES.past.card}` : isMoving ? `cursor-grab border-sky-500 bg-sky-50 ring-2 ring-sky-300 active:cursor-grabbing` : `cursor-grab active:cursor-grabbing ${TONES.booked.card} hover:border-rose-400`}`}
                       >
                         <div className="flex items-start gap-1.5">
                           <span
@@ -500,6 +504,7 @@ export default function ScheduleBoard({
                               </p>
                             ) : null}
                           </div>
+                          {past ? null : (
                           <button
                             type="button"
                             aria-label={`Cancel booking for ${booking.candidateName}`}
@@ -511,6 +516,7 @@ export default function ScheduleBoard({
                           >
                             &times;
                           </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -529,6 +535,18 @@ export default function ScheduleBoard({
                       >
                         Closed
                       </div>
+                    </div>
+                  );
+                }
+
+                if (past) {
+                  return (
+                    <div
+                      key={key}
+                      style={placement}
+                      className="border-b border-slate-100 bg-slate-50 p-1.5"
+                    >
+                      <div className="h-full min-h-[3.25rem] rounded-lg border border-dashed border-slate-200" />
                     </div>
                   );
                 }
@@ -631,6 +649,9 @@ export default function ScheduleBoard({
           role="controller"
           panels={panels}
           candidates={candidates}
+          panelsFreeFor={(count: number) =>
+            panelsFreeFor(target.slotIndex, count)
+          }
           onClose={() => setTarget(null)}
           onBooked={refresh}
         />

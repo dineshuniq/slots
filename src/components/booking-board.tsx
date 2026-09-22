@@ -9,10 +9,8 @@ import {
   APPROVAL_LABEL,
   canStartAt,
   coveredSlots,
-  DURATION_CHOICES,
   durationLabel,
   EXTRA_HOURS_NOTE,
-  fitsInDay,
   hasExtraHours,
   isSlotInPast,
   longDateLabel,
@@ -57,7 +55,6 @@ export default function BookingBoard({
   today,
 }: Props) {
   const [dateKey, setDateKey] = useState(today);
-  const [slotCount, setSlotCount] = useState(1);
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -130,13 +127,14 @@ export default function BookingBoard({
   }, [data]);
 
   /**
-   * Panels free for a whole session starting here. A 2-hour session needs the
-   * SAME panel free across all four blocks, so this is an intersection, not a
-   * union - which is why availability depends on the chosen length.
+   * Panels free for a whole session of this length starting here. A 2-hour
+   * session needs the SAME panel free across all four blocks, so this is an
+   * intersection, not a union - which is why the dialog re-asks this whenever
+   * the length is changed there.
    */
   const panelsFreeFrom = useCallback(
-    (index: number): string[] => {
-      const window = coveredSlots(index, slotCount);
+    (index: number, count: number): string[] => {
+      const window = coveredSlots(index, count);
       if (window.some((i) => i >= slots.length)) return [];
 
       return window.reduce<string[]>(
@@ -147,15 +145,16 @@ export default function BookingBoard({
         [],
       );
     },
-    [slots, slotCount],
+    [slots],
   );
 
-  // Start times that can actually take a session of the chosen length, so the
-  // count never claims a morning that has gone, or a gap too short to use.
+  // The board lists start times, not whole sessions: a block is open when a
+  // panel is free for it and it has not gone by. Length is chosen in the
+  // dialog, which re-checks availability for whatever is picked there.
   const openCount = slots.filter(
     (slot) =>
-      canStartAt(dateKey, slot.index, slotCount, now ?? undefined) &&
-      panelsFreeFrom(slot.index).length > 0,
+      canStartAt(dateKey, slot.index, 1, now ?? undefined) &&
+      panelsFreeFrom(slot.index, 1).length > 0,
   ).length;
 
   return (
@@ -175,40 +174,6 @@ export default function BookingBoard({
         <DateCarousel days={days} selected={dateKey} onSelect={setDateKey} />
       </section>
 
-      <section className="mt-5">
-        <fieldset>
-          <legend className="text-sm font-medium text-slate-700">
-            Session length
-          </legend>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {DURATION_CHOICES.map((choice) => (
-              <label
-                key={choice.slots}
-                className={
-                  slotCount === choice.slots
-                    ? "cursor-pointer rounded-lg border border-slate-900 bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition"
-                    : "cursor-pointer rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
-                }
-              >
-                <input
-                  type="radio"
-                  name="slotCount"
-                  value={choice.slots}
-                  checked={slotCount === choice.slots}
-                  onChange={() => setSlotCount(choice.slots)}
-                  className="sr-only"
-                />
-                {choice.label}
-              </label>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Longer sessions need the same panel free for the whole time, so
-            fewer start times will be open.
-          </p>
-        </fieldset>
-      </section>
-
       <section className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">
@@ -217,7 +182,10 @@ export default function BookingBoard({
           <p className="text-sm text-slate-600">
             {loading && !data
               ? "Loading timetable..."
-              : `${openCount} start time${openCount === 1 ? "" : "s"} open for ${durationLabel(slotCount)}`}
+              : `${openCount} start time${openCount === 1 ? "" : "s"} open`}
+          </p>
+          <p className="text-xs text-slate-500">
+            Pick a start time - session length is chosen when you book.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -255,33 +223,20 @@ export default function BookingBoard({
           const timeLabel = `${slotStartLabel(slot.index)} - ${slotEndLabel(slot.index)}`;
           // Extra hours are chargeable, so this has to be obvious before
           // anyone picks the slot, not a surprise at confirmation.
-          const needsApproval = hasExtraHours(slot.index, slotCount);
-          const freePanels = panelsFreeFrom(slot.index);
+          const needsApproval = hasExtraHours(slot.index, 1);
+          const freePanels = panelsFreeFrom(slot.index, 1);
           const freeCount = freePanels.length;
-          const startable = canStartAt(
-            dateKey,
-            slot.index,
-            slotCount,
-            now ?? undefined,
-          );
-
-          const covered = coveredSlots(slot.index, slotCount).filter(
-            (index) => index < slots.length,
-          );
+          const startable = canStartAt(dateKey, slot.index, 1, now ?? undefined);
 
           // Every panel shut for this time, as opposed to merely taken.
-          const unavailable = covered.some(
-            (index) => slots[index].status === "unavailable",
-          );
+          const unavailable = slot.status === "unavailable";
 
-          // A candidate cannot be in two sessions at once, so a window their
-          // own booking already covers is not open to them however many panels
-          // are free. Offering Book here would just earn a 409.
+          // A candidate cannot be in two sessions at once, so a block one of
+          // their own sessions already covers is not open to them however many
+          // panels are free. Offering Book here would just earn a 409.
           const ownClash =
             role === "candidate" &&
-            covered.some((index) =>
-              slots[index].bookings.some((booking) => booking.isOwn),
-            );
+            slot.bookings.some((booking) => booking.isOwn);
 
           const canBook = startable && !ownClash && freeCount > 0;
 
@@ -333,17 +288,15 @@ export default function BookingBoard({
             ? "Past"
             : ownClash
               ? "You already have a session at this time"
-              : !fitsInDay(slot.index, slotCount)
-                ? `Too late for ${durationLabel(slotCount)}`
-                : unavailable
-                  ? "Panel unavailable at this time"
-                  : freeCount === 0
-                    ? role === "candidate"
-                      ? "Fully booked"
-                      : "All panels booked"
-                    : role === "candidate"
-                      ? "Available"
-                      : `${freeCount} of ${panels.length} panel${panels.length === 1 ? "" : "s"} free`;
+              : unavailable
+                ? "Panel unavailable at this time"
+                : freeCount === 0
+                  ? role === "candidate"
+                    ? "Fully booked"
+                    : "All panels booked"
+                  : role === "candidate"
+                    ? "Available"
+                    : `${freeCount} of ${panels.length} panel${panels.length === 1 ? "" : "s"} free`;
 
           return (
             <div
@@ -375,9 +328,6 @@ export default function BookingBoard({
                   </p>
                   <p className={`truncate text-xs font-medium ${style.text}`}>
                     {summary}
-                    {canBook && slotCount > 1
-                      ? ` \u00b7 books ${sessionRangeLabel(slot.index, slotCount)}`
-                      : ""}
                   </p>
                 </div>
 
@@ -388,7 +338,7 @@ export default function BookingBoard({
                       setTarget({
                         dateKey,
                         slotIndex: slot.index,
-                        slotCount,
+                        slotCount: 1,
                         panelIds: freePanels,
                         mode: "book",
                       })
@@ -404,7 +354,7 @@ export default function BookingBoard({
                       setTarget({
                         dateKey,
                         slotIndex: slot.index,
-                        slotCount,
+                        slotCount: 1,
                         panelIds: [],
                         mode: "waitlist",
                       })
@@ -552,6 +502,9 @@ export default function BookingBoard({
           candidates={candidates}
           onClose={() => setTarget(null)}
           onBooked={refresh}
+          panelsFreeFor={(count: number) =>
+            panelsFreeFrom(target.slotIndex, count)
+          }
         />
       ) : null}
     </div>

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   APPROVAL_LABEL,
+  DURATION_CHOICES,
   durationLabel,
+  fitsInDay,
   EXTRA_HOURS_NOTE,
   hasExtraHours,
   longDateLabel,
@@ -35,6 +37,12 @@ type Props = {
   candidates: CandidateSummary[];
   onClose: () => void;
   onBooked: () => void;
+  /**
+   * Supplied when the length may be changed here: returns the panels free for
+   * a whole session of that many blocks, so switching to 2 hours re-checks
+   * availability instead of failing at submit.
+   */
+  panelsFreeFor?: (slotCount: number) => string[];
 };
 
 /**
@@ -55,10 +63,12 @@ export default function BookingDialog({
   candidates,
   onClose,
   onBooked,
+  panelsFreeFor,
 }: Props) {
   const [companyName, setCompanyName] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>("Interview");
   const [candidateId, setCandidateId] = useState("");
+  const [slotCount, setSlotCount] = useState(target.slotCount);
   const [panelId, setPanelId] = useState(target.panelIds[0] ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,18 +81,34 @@ export default function BookingDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const availableIds = useMemo(
+    () => (panelsFreeFor ? panelsFreeFor(slotCount) : target.panelIds),
+    [panelsFreeFor, slotCount, target.panelIds],
+  );
+
   const choices = useMemo(
     () =>
-      target.panelIds.map((id) => ({
+      availableIds.map((id) => ({
         id,
         label: panels.find((panel) => panel.id === id)?.label ?? id,
       })),
-    [panels, target.panelIds],
+    [panels, availableIds],
   );
 
+  // Changing the length can take the chosen panel away; fall back to a free one.
+  const effectivePanelId = availableIds.includes(panelId)
+    ? panelId
+    : (availableIds[0] ?? "");
+
+  const tooLate = !fitsInDay(target.slotIndex, slotCount);
+  const waitlisting = target.mode === "waitlist";
+  const noRoom = !waitlisting && availableIds.length === 0;
+
   const panelLabel = useMemo(
-    () => choices.find((choice) => choice.id === panelId)?.label ?? panelId,
-    [choices, panelId],
+    () =>
+      choices.find((choice) => choice.id === effectivePanelId)?.label ??
+      effectivePanelId,
+    [choices, effectivePanelId],
   );
 
   async function submit(event: React.FormEvent) {
@@ -91,7 +117,6 @@ export default function BookingDialog({
     setBusy(true);
 
     try {
-      const waitlisting = target.mode === "waitlist";
       const response = await fetch(
         waitlisting ? "/api/waiting-list" : "/api/bookings",
         {
@@ -100,13 +125,13 @@ export default function BookingDialog({
         body: JSON.stringify({
           date: target.dateKey,
           slotIndex: target.slotIndex,
-          slotCount: target.slotCount,
+          slotCount,
           companyName: companyName.trim(),
           sessionType,
           ...(role === "controller"
             ? waitlisting
               ? { candidateId }
-              : { candidateId, panelId }
+              : { candidateId, panelId: effectivePanelId }
             : {}),
         }),
       },
@@ -152,14 +177,16 @@ export default function BookingDialog({
           {target.mode === "waitlist" ? "Join the waiting list" : "Book this slot"}
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          {sessionRangeLabel(target.slotIndex, target.slotCount)} on{" "}
-          {longDateLabel(target.dateKey)}
+          {tooLate
+            ? `Starts ${sessionRangeLabel(target.slotIndex, 1).split(" ")[0]}`
+            : sessionRangeLabel(target.slotIndex, slotCount)}{" "}
+          on {longDateLabel(target.dateKey)}
           <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
-            {durationLabel(target.slotCount)}
+            {durationLabel(slotCount)}
           </span>
         </p>
 
-        {hasExtraHours(target.slotIndex, target.slotCount) ? (
+        {hasExtraHours(target.slotIndex, slotCount) ? (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <span className="font-semibold">{APPROVAL_LABEL}</span> — this
             session runs {EXTRA_HOURS_NOTE}.
@@ -174,6 +201,52 @@ export default function BookingDialog({
         ) : null}
 
         <form onSubmit={submit} className="mt-5 space-y-4">
+          {panelsFreeFor ? (
+            <fieldset>
+              <legend className="block text-sm font-medium text-slate-700">
+                Session length
+              </legend>
+              <div className="mt-1.5 grid grid-cols-4 gap-2">
+                {DURATION_CHOICES.map((choice) => {
+                  const disabled = !fitsInDay(target.slotIndex, choice.slots);
+                  return (
+                    <label
+                      key={choice.slots}
+                      className={
+                        disabled
+                          ? "cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center text-xs font-medium text-slate-400"
+                          : slotCount === choice.slots
+                            ? "cursor-pointer rounded-lg border border-slate-900 bg-slate-900 px-2 py-2 text-center text-xs font-semibold text-white transition"
+                            : "cursor-pointer rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-medium text-slate-700 transition hover:border-slate-400"
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="dialogSlotCount"
+                        value={choice.slots}
+                        disabled={disabled}
+                        checked={slotCount === choice.slots}
+                        onChange={() => setSlotCount(choice.slots)}
+                        className="sr-only"
+                      />
+                      {choice.label}
+                    </label>
+                  );
+                })}
+              </div>
+              {noRoom && !tooLate ? (
+                <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  No panel is free for {durationLabel(slotCount)} starting here.
+                  Pick a shorter session.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  A longer session needs the same panel free for the whole time.
+                </p>
+              )}
+            </fieldset>
+          ) : null}
+
           {role === "controller" ? (
             <div>
               <label
@@ -212,7 +285,7 @@ export default function BookingDialog({
               {choices.length > 1 ? (
                 <select
                   id="panel"
-                  value={panelId}
+                  value={effectivePanelId}
                   onChange={(event) => setPanelId(event.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                 >
@@ -299,7 +372,7 @@ export default function BookingDialog({
             </button>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || noRoom || tooLate}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy
