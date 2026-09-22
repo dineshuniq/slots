@@ -526,31 +526,37 @@ export default function ScheduleBoard({
                         ) : null}
 
                         <div className="relative z-10 flex items-start gap-1.5">
+                          {/* Name and company sit on a plate of their own, so
+                              they read as type rather than as words lost in the
+                              chevrons behind them. It shrink-wraps, which keeps
+                              the pattern visible either side of it. */}
                           <div className="min-w-0 flex-1">
-                            <button
-                              type="button"
-                              title={`View ${booking.candidateName}'s history`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setHistoryId(booking.candidateId);
-                              }}
-                              className={`inline-block max-w-full cursor-pointer truncate rounded text-left align-top font-bold tracking-wide text-slate-900 uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-current ${zoom.nameText}`}
-                            >
-                              {booking.candidateName}
-                            </button>
+                            <div className="inline-block max-w-full rounded-md bg-white/85 px-1.5 py-1 ring-1 ring-slate-900/5">
+                              <button
+                                type="button"
+                                title={`View ${booking.candidateName}'s history`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setHistoryId(booking.candidateId);
+                                }}
+                                className={`block max-w-full cursor-pointer truncate rounded text-left font-extrabold tracking-[0.07em] text-slate-900 uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-slate-400 ${zoom.nameText}`}
+                              >
+                                {booking.candidateName}
+                              </button>
 
-                            {/* Name and company at every zoom - between them
-                                they say who is sitting and for whom, which is
-                                the whole point of the chip. Only the session
-                                type is dropped when the rows are tightest. */}
-                            <p
-                              className={`truncate font-semibold text-slate-800 ${zoom.companyText}`}
-                            >
-                              {booking.companyName}
-                            </p>
+                              {/* Name and company at every zoom - between them
+                                  they say who is sitting and for whom, which is
+                                  the whole point of the chip. Only the session
+                                  type is dropped when the rows are tightest. */}
+                              <p
+                                className={`mt-0.5 truncate font-medium text-slate-500 ${zoom.companyText}`}
+                              >
+                                {booking.companyName}
+                              </p>
+                            </div>
 
                             {zoom.detail ? (
-                              <p className="mt-1 inline-block rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                              <p className="mt-1 inline-block rounded bg-white/85 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-900/5">
                                 {booking.sessionType}
                               </p>
                             ) : null}
