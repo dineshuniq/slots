@@ -254,31 +254,57 @@ export default function BookingBoard({
             slotCount,
             now ?? undefined,
           );
-          const canBook = startable && freeCount > 0;
+
+          const covered = coveredSlots(slot.index, slotCount).filter(
+            (index) => index < slots.length,
+          );
 
           // Every panel shut for this time, as opposed to merely taken.
-          const unavailable = coveredSlots(slot.index, slotCount)
-            .filter((covered) => covered < slots.length)
-            .some((covered) => slots[covered].status === "unavailable");
+          const unavailable = covered.some(
+            (index) => slots[index].status === "unavailable",
+          );
+
+          // A candidate cannot be in two sessions at once, so a window their
+          // own booking already covers is not open to them however many panels
+          // are free. Offering Book here would just earn a 409.
+          const ownClash =
+            role === "candidate" &&
+            covered.some((index) =>
+              slots[index].bookings.some((booking) => booking.isOwn),
+            );
+
+          const canBook = startable && !ownClash && freeCount > 0;
 
           const queue = waitingBySlot.get(slot.index) ?? [];
-          const canJoinQueue = startable && !unavailable && freeCount === 0;
+          const canJoinQueue =
+            startable && !unavailable && !ownClash && freeCount === 0;
 
           // Controllers see every session at this time; candidates only ever
           // see their own - the rest are just panels that are no longer free.
           // A long session is listed against every block it covers, so it is
           // only described on the block it starts in.
-          const detailed: Booking[] = (
+          const visibleBookings: Booking[] =
             role === "controller"
               ? slot.bookings
-              : slot.bookings.filter((booking) => booking.isOwn)
-          ).filter((booking) => booking.slotIndex === slot.index);
+              : slot.bookings.filter((booking) => booking.isOwn);
 
-          const mine = detailed.some((booking) => booking.isOwn);
+          // A session longer than one block is listed against every block it
+          // covers. Describing it in full on each one reads as several separate
+          // half-hour bookings, which is the confusion this split avoids.
+          const detailed = visibleBookings.filter(
+            (booking) => booking.slotIndex === slot.index,
+          );
+          const continuing = visibleBookings.filter(
+            (booking) => booking.slotIndex < slot.index,
+          );
+
+          const mine = visibleBookings.some((booking) => booking.isOwn);
 
           const tone = past
             ? "border-slate-200 bg-slate-50"
-            : unavailable
+            : ownClash
+              ? "border-rose-400 bg-rose-50"
+              : unavailable
               ? "border-slate-300 bg-slate-100"
               : mine
                 ? "border-rose-500 bg-rose-50"
@@ -299,17 +325,19 @@ export default function BookingBoard({
           // different problems, so they do not share a message.
           const summary = past
             ? "Past"
-            : !fitsInDay(slot.index, slotCount)
-              ? `Too late for ${durationLabel(slotCount)}`
-              : unavailable
-              ? "Panel unavailable at this time"
-              : freeCount === 0
-                ? role === "candidate"
-                  ? "Fully booked"
-                  : "All panels booked"
-                : role === "candidate"
-                  ? "Available"
-                  : `${freeCount} of ${panels.length} panel${panels.length === 1 ? "" : "s"} free`;
+            : ownClash
+              ? "You already have a session at this time"
+              : !fitsInDay(slot.index, slotCount)
+                ? `Too late for ${durationLabel(slotCount)}`
+                : unavailable
+                  ? "Panel unavailable at this time"
+                  : freeCount === 0
+                    ? role === "candidate"
+                      ? "Fully booked"
+                      : "All panels booked"
+                    : role === "candidate"
+                      ? "Available"
+                      : `${freeCount} of ${panels.length} panel${panels.length === 1 ? "" : "s"} free`;
 
           return (
             <div
@@ -349,6 +377,9 @@ export default function BookingBoard({
                     }`}
                   >
                     {summary}
+                    {canBook && slotCount > 1
+                      ? ` \u00b7 books ${sessionRangeLabel(slot.index, slotCount)}`
+                      : ""}
                   </p>
                 </div>
 
@@ -420,35 +451,81 @@ export default function BookingBoard({
               ) : null}
 
               {detailed.length > 0 ? (
-                <ul className="mt-2 space-y-1 border-t border-slate-900/5 pt-2">
+                <ul className="mt-2 space-y-2 border-t border-slate-900/5 pt-2">
                   {detailed.map((booking) => (
+                    <li key={booking.id} className="text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`rounded bg-white/70 px-1.5 py-0.5 font-medium ${past ? "text-slate-400" : "text-slate-700"}`}
+                        >
+                          {panelLabel(booking.panelId)}
+                        </span>
+
+                        {booking.slotCount > 1 ? (
+                          <span
+                            className={`rounded px-1.5 py-0.5 font-semibold ${
+                              past
+                                ? "bg-slate-200 text-slate-500"
+                                : "bg-rose-600 text-white"
+                            }`}
+                          >
+                            {durationLabel(booking.slotCount)}
+                          </span>
+                        ) : null}
+
+                        <span
+                          className={`font-semibold tabular-nums ${past ? "text-slate-400" : "text-rose-800"}`}
+                        >
+                          {sessionRangeLabel(booking.slotIndex, booking.slotCount)}
+                        </span>
+
+                        {booking.isOwn && !past ? (
+                          <button
+                            type="button"
+                            onClick={() => release(booking.id)}
+                            className="ml-auto rounded-lg border border-rose-300 px-2 py-0.5 font-medium text-rose-700 transition hover:bg-rose-100"
+                          >
+                            Release
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <p
+                        className={`mt-0.5 truncate ${past ? "text-slate-400" : "text-rose-700"}`}
+                      >
+                        {booking.isOwn && role === "candidate"
+                          ? "You"
+                          : booking.candidateName}{" "}
+                        &middot; {booking.companyName} &middot;{" "}
+                        {booking.sessionType}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {continuing.length > 0 ? (
+                <ul className="mt-2 space-y-1 border-t border-slate-900/5 pt-2">
+                  {continuing.map((booking) => (
                     <li
                       key={booking.id}
-                      className="flex items-center gap-2 text-xs"
+                      className={`flex items-center gap-1.5 text-xs ${past ? "text-slate-400" : "text-slate-600"}`}
                     >
-                      <span
-                        className={`shrink-0 rounded bg-white/70 px-1.5 py-0.5 font-medium ${past ? "text-slate-400" : "text-slate-700"}`}
-                      >
-                        {panelLabel(booking.panelId)}
+                      <span aria-hidden className="shrink-0">
+                        &#8627;
                       </span>
-                      <span
-                        className={`min-w-0 flex-1 truncate ${past ? "text-slate-400" : "text-rose-700"}`}
-                      >
-                        {booking.candidateName} / {booking.companyName} /{" "}
-                        {booking.sessionType}
-                        {booking.slotCount > 1
-                          ? ` / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`
-                          : ""}
+                      <span className="min-w-0 flex-1 truncate">
+                        Still running:{" "}
+                        <span className="font-medium">
+                          {booking.isOwn && role === "candidate"
+                            ? "your session"
+                            : `${booking.candidateName}'s session`}
+                        </span>{" "}
+                        <span className="tabular-nums">
+                          {sessionRangeLabel(booking.slotIndex, booking.slotCount)}
+                        </span>{" "}
+                        ({durationLabel(booking.slotCount)})
                       </span>
-                      {booking.isOwn && !past ? (
-                        <button
-                          type="button"
-                          onClick={() => release(booking.id)}
-                          className="shrink-0 rounded-lg border border-rose-300 px-2 py-0.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
-                        >
-                          Release
-                        </button>
-                      ) : null}
                     </li>
                   ))}
                 </ul>
