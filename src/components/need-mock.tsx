@@ -11,9 +11,11 @@ type Props = {
  * Marks a session whose candidate has not sat their mock yet.
  *
  * Chevrons drift right to left across the whole card, with an optional label.
- * The chevrons are a masked background layer sitting behind the text, so the
- * card keeps its own shape and nothing has to make room for a banner. The host
- * element needs `relative isolate overflow-hidden`.
+ * The chevrons are a background layer, so the card keeps its own shape and
+ * nothing has to make room for a banner.
+ *
+ * The host element needs `relative overflow-hidden`, and whatever must stay
+ * readable over the chevrons needs `relative z-10`.
  *
  * It clears itself: `needsMock` comes from whether a mock is recorded for that
  * candidate on that date, so ticking one off on the Mock page removes this on
@@ -32,7 +34,7 @@ export default function NeedMock({
         {...(label
           ? { "aria-hidden": true }
           : { role: "status", "aria-label": "Needs mock" })}
-        className={`need-mock-field pointer-events-none absolute inset-0 -z-10 ${
+        className={`need-mock-field pointer-events-none absolute inset-0 z-0 ${
           onDark ? "need-mock-field-dark" : ""
         }`}
       />
@@ -41,7 +43,7 @@ export default function NeedMock({
         <span
           role="status"
           aria-label="Needs mock"
-          className={`inline-flex w-fit items-center rounded bg-amber-400 font-bold tracking-wider text-amber-950 uppercase ${
+          className={`relative z-10 inline-flex w-fit items-center rounded bg-amber-400 font-bold tracking-wider text-amber-950 uppercase ${
             compact ? "px-1.5 py-px text-[9px]" : "px-2 py-0.5 text-[10px]"
           }`}
         >

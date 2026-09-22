@@ -265,12 +265,12 @@ export default function BookingBoard({
                 }`}
               >
                 {ownNeedsMock ? (
-                  <div className="px-4 pt-3">
+                  <div className="relative z-10 px-4 pt-3">
                     <NeedMock onDark />
                   </div>
                 ) : null}
 
-                <div className="flex items-center gap-4 px-4 py-3">
+                <div className="relative z-10 flex items-center gap-4 px-4 py-3">
                 <span className="shrink-0 text-2xl leading-none font-bold tracking-tight">
                   {panelLabel(ownSession.panelId)}
                 </span>
@@ -501,12 +501,12 @@ export default function BookingBoard({
                       }`}
                     >
                       {booking.needsMock && !past ? (
-                        <div className="mb-1.5">
+                        <div className="relative z-10 mb-1.5">
                           <NeedMock compact />
                         </div>
                       ) : null}
 
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="relative z-10 flex flex-wrap items-center gap-1.5">
                         <span
                           className={`rounded bg-white/70 px-1.5 py-0.5 font-medium ${past ? "text-slate-400" : "text-slate-700"}`}
                         >

@@ -525,7 +525,7 @@ export default function ScheduleBoard({
                           <NeedMock compact label={false} />
                         ) : null}
 
-                        <div className="flex items-start gap-1.5">
+                        <div className="relative z-10 flex items-start gap-1.5">
                           <div className="min-w-0 flex-1">
                             <button
                               type="button"
@@ -544,7 +544,7 @@ export default function ScheduleBoard({
                                 the whole point of the chip. Only the session
                                 type is dropped when the rows are tightest. */}
                             <p
-                              className={`truncate font-medium text-slate-700 ${zoom.companyText}`}
+                              className={`truncate font-semibold text-slate-800 ${zoom.companyText}`}
                             >
                               {booking.companyName}
                             </p>
