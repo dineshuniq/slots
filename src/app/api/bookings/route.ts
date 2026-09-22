@@ -7,6 +7,7 @@ import {
 import { fail, json, readJson, readString, serverError, unauthorized } from "@/lib/http";
 import { findPanel, listFreePanels } from "@/lib/queries";
 import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
+import { recruiterContactError } from "@/lib/contact";
 import { getSession } from "@/lib/session";
 import {
   durationLabel,
@@ -72,6 +73,11 @@ export async function POST(request: Request) {
     if (!isSessionType(sessionType)) {
       return fail("Session Type must be Interview or Assessment.", 400);
     }
+
+    const recruiterPhone = readString(body, "recruiterPhone");
+    const recruiterEmail = readString(body, "recruiterEmail");
+    const contactError = recruiterContactError(recruiterPhone, recruiterEmail);
+    if (contactError) return fail(contactError, 400);
 
     let candidateId: string;
     let candidateName = "";
@@ -153,10 +159,12 @@ export async function POST(request: Request) {
           const inserted = await sql<{ id: string }[]>`
             insert into bookings
               (panel_id, candidate_id, slot_date, slot_index, slot_count,
-               company_name, session_type, booked_by)
+               company_name, session_type, recruiter_phone, recruiter_email,
+               booked_by)
             values
               (${panel.id}, ${candidateId}, ${date}::date, ${slotIndex}, ${slotCount},
-               ${companyName}, ${sessionType}, ${session.role})
+               ${companyName}, ${sessionType}, ${recruiterPhone || null},
+               ${recruiterEmail || null}, ${session.role})
             returning id
           `;
           await recordAudit({
@@ -179,6 +187,8 @@ export async function POST(request: Request) {
               slotCount: length,
               companyName,
               sessionType,
+              recruiterPhone: recruiterPhone || null,
+              recruiterEmail: recruiterEmail || null,
             },
           });
 

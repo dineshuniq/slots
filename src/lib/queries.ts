@@ -22,6 +22,8 @@ type BookingRow = {
   slot_date: string;
   slot_index: number;
   slot_count: number;
+  recruiter_phone: string | null;
+  recruiter_email: string | null;
   needs_mock: boolean;
 };
 
@@ -36,6 +38,8 @@ function toBooking(row: BookingRow, viewerCandidateId: string | null): Booking {
     slotDate: row.slot_date,
     slotIndex: Number(row.slot_index),
     slotCount: Number(row.slot_count),
+    recruiterPhone: row.recruiter_phone,
+    recruiterEmail: row.recruiter_email,
     needsMock: Boolean(row.needs_mock),
     isOwn: viewerCandidateId !== null && row.candidate_id === viewerCandidateId,
   };
@@ -52,6 +56,8 @@ function redactForCandidate(booking: Booking): Booking {
     candidateId: "",
     candidateName: "",
     companyName: "",
+    recruiterPhone: null,
+    recruiterEmail: null,
     needsMock: false,
     sessionType: booking.sessionType,
   };
@@ -156,6 +162,8 @@ async function bookingsFor(
            to_char(b.slot_date, 'YYYY-MM-DD') as slot_date,
            b.slot_index,
            b.slot_count,
+           b.recruiter_phone,
+           b.recruiter_email,
            (mc.candidate_id is null) as needs_mock
       from bookings b
       join candidates c on c.id = b.candidate_id
@@ -445,6 +453,8 @@ export type CandidateSession = {
   panelId: string;
   companyName: string;
   sessionType: SessionType;
+  recruiterPhone: string | null;
+  recruiterEmail: string | null;
   status: "booked" | "cancelled";
   bookedBy: "candidate" | "controller";
   createdAt: string;
@@ -497,6 +507,8 @@ export async function getCandidateHistory(
       panel_id: string;
       company_name: string;
       session_type: SessionType;
+      recruiter_phone: string | null;
+      recruiter_email: string | null;
       status: "booked" | "cancelled";
       booked_by: "candidate" | "controller";
       created_at: string;
@@ -509,6 +521,8 @@ export async function getCandidateHistory(
            panel_id,
            company_name,
            session_type,
+           recruiter_phone,
+           recruiter_email,
            status,
            booked_by,
            created_at
@@ -546,6 +560,8 @@ export async function getCandidateHistory(
       panelId: s.panel_id,
       companyName: s.company_name,
       sessionType: s.session_type,
+      recruiterPhone: s.recruiter_phone,
+      recruiterEmail: s.recruiter_email,
       status: s.status,
       bookedBy: s.booked_by,
       createdAt: new Date(s.created_at).toISOString(),

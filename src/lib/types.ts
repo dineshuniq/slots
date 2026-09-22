@@ -39,6 +39,9 @@ export type Booking = {
   slotIndex: number;
   /** Length in half-hour blocks: 1 = 30 min ... 4 = 2 hours. */
   slotCount: number;
+  /** Who to call about this session. Either may be blank. */
+  recruiterPhone: string | null;
+  recruiterEmail: string | null;
   /** No mock recorded for this candidate on this date yet. */
   needsMock: boolean;
   isOwn: boolean;
@@ -79,6 +82,8 @@ export type WaitingSummary = {
   slotCount: number;
   companyName: string;
   sessionType: SessionType;
+  recruiterPhone: string | null;
+  recruiterEmail: string | null;
   reason: "slot_full" | "panel_closed";
   position: number;
   isOwn: boolean;

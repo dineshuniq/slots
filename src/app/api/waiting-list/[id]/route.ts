@@ -48,11 +48,13 @@ export async function POST(_request: Request, { params }: Params) {
       const inserted = await sql<{ id: string }[]>`
         insert into bookings
           (panel_id, candidate_id, slot_date, slot_index, slot_count,
-           company_name, session_type, booked_by)
+           company_name, session_type, recruiter_phone, recruiter_email,
+           booked_by)
         values
           (${panel.id}, ${entry.candidateId}, ${entry.slotDate}::date,
            ${entry.slotIndex}, ${entry.slotCount}, ${entry.companyName},
-           ${entry.sessionType}, 'controller')
+           ${entry.sessionType}, ${entry.recruiterPhone},
+           ${entry.recruiterEmail}, 'controller')
         returning id
       `;
 

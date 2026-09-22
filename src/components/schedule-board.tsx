@@ -8,7 +8,6 @@ import NeedMock from "@/components/need-mock";
 import {
   ALL_SLOT_INDEXES,
   coveredSlots,
-  durationLabel,
   fitsInDay,
   isSlotInPast,
   longDateLabel,
@@ -520,19 +519,13 @@ export default function ScheduleBoard({
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group flex h-full flex-col rounded-lg border px-2.5 py-2 transition ${past ? `cursor-default ${TONES.past.card}` : isMoving ? `cursor-grab border-sky-500 bg-sky-50 ring-2 ring-sky-300 active:cursor-grabbing` : `cursor-grab active:cursor-grabbing ${TONES.booked.card} hover:border-rose-400`}`}
+                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition ${past ? `cursor-default ${TONES.past.card}` : isMoving ? `cursor-grab border-sky-500 bg-sky-50 ring-2 ring-sky-300 active:cursor-grabbing` : `cursor-grab active:cursor-grabbing ${TONES.booked.card} hover:border-rose-400`}`}
                       >
                         {booking.needsMock && !past ? (
-                          <div className="mb-1 -mx-0.5">
-                            <NeedMock size="strip" />
-                          </div>
+                          <NeedMock compact label={false} />
                         ) : null}
 
                         <div className="flex items-start gap-1.5">
-                          <span
-                            aria-hidden
-                            className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500"
-                          />
                           <div className="min-w-0 flex-1">
                             <button
                               type="button"
@@ -541,7 +534,7 @@ export default function ScheduleBoard({
                                 event.stopPropagation();
                                 setHistoryId(booking.candidateId);
                               }}
-                              className={`inline-block max-w-full cursor-pointer truncate rounded text-left align-top font-semibold text-slate-900 underline decoration-transparent underline-offset-2 transition hover:decoration-current ${zoom.detail ? "text-xs" : zoom.text}`}
+                              className={`inline-block max-w-full cursor-pointer truncate rounded text-left align-top font-bold tracking-wide text-slate-900 uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-current ${zoom.nameText}`}
                             >
                               {booking.candidateName}
                             </button>
@@ -550,22 +543,15 @@ export default function ScheduleBoard({
                                 so only the name fits. */}
                             {zoom.detail ? (
                               <>
-                                <p className={`truncate text-slate-600 ${zoom.text}`}>
+                                <p
+                                  className={`truncate font-medium text-slate-700 ${zoom.companyText}`}
+                                >
                                   {booking.companyName}
                                 </p>
-                                <p className="mt-0.5 inline-block rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                                <p className="mt-1 inline-block rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                                   {booking.sessionType}
                                 </p>
                               </>
-                            ) : null}
-                            {booking.slotCount > 1 ? (
-                              <p className="mt-1 text-[10px] font-medium tabular-nums text-slate-500">
-                                {durationLabel(booking.slotCount)} &middot;{" "}
-                                {sessionRangeLabel(
-                                  booking.slotIndex,
-                                  booking.slotCount,
-                                )}
-                              </p>
                             ) : null}
                           </div>
                           {past ? null : (

@@ -13,6 +13,7 @@ import {
   sessionRangeLabel,
 } from "@/lib/time";
 import { isSessionType } from "@/lib/types";
+import { recruiterContactError } from "@/lib/contact";
 import { joinWaitingList, listWaiting } from "@/lib/waiting";
 
 const MAX_COMPANY_NAME = 120;
@@ -76,6 +77,11 @@ export async function POST(request: Request) {
       return fail(`Company Name must be ${MAX_COMPANY_NAME} characters or fewer.`, 400);
     }
 
+    const recruiterPhone = readString(body, "recruiterPhone");
+    const recruiterEmail = readString(body, "recruiterEmail");
+    const contactError = recruiterContactError(recruiterPhone, recruiterEmail);
+    if (contactError) return fail(contactError, 400);
+
     const sessionType = body.sessionType;
     if (!isSessionType(sessionType)) {
       return fail("Session Type must be Interview or Assessment.", 400);
@@ -130,6 +136,8 @@ export async function POST(request: Request) {
         slotCount,
         companyName,
         sessionType,
+        recruiterPhone: recruiterPhone || null,
+        recruiterEmail: recruiterEmail || null,
       });
     } catch (error) {
       if (isUniqueViolation(error)) {

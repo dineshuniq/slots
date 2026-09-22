@@ -59,6 +59,9 @@ create table if not exists bookings (
                 constraint bookings_slot_count_range check (slot_count between 1 and 4),
   company_name  text        not null check (length(btrim(company_name)) > 0),
   session_type  text        not null check (session_type in ('Interview', 'Assessment')),
+  -- Who to call about this session. Optional: often not known at booking time.
+  recruiter_phone text,
+  recruiter_email text,
   status        text        not null default 'booked' check (status in ('booked', 'cancelled')),
   booked_by     text        not null default 'candidate' check (booked_by in ('candidate', 'controller')),
   created_at    timestamptz not null default now(),
@@ -70,6 +73,8 @@ create table if not exists bookings (
 -- Migrations for databases created before sessions had a length. These run
 -- before the constraints below, which reference slot_count.
 alter table bookings add column if not exists slot_count smallint not null default 1;
+alter table bookings add column if not exists recruiter_phone text;
+alter table bookings add column if not exists recruiter_email text;
 
 do $length_checks$
 begin
@@ -245,6 +250,9 @@ create table if not exists waiting_list (
   slot_count     smallint    not null default 1 check (slot_count between 1 and 4),
   company_name   text        not null check (length(btrim(company_name)) > 0),
   session_type   text        not null check (session_type in ('Interview', 'Assessment')),
+  -- Carried through so being seated later keeps the contact the candidate gave.
+  recruiter_phone text,
+  recruiter_email text,
   status         text        not null default 'waiting'
                  check (status in ('waiting', 'placed', 'cancelled')),
   -- Why they are waiting, so the candidate can be told the right thing.
@@ -254,6 +262,9 @@ create table if not exists waiting_list (
   resolved_at    timestamptz,
   placed_booking_id uuid     references bookings (id) on delete set null
 );
+
+alter table waiting_list add column if not exists recruiter_phone text;
+alter table waiting_list add column if not exists recruiter_email text;
 
 create index if not exists waiting_list_queue_idx
   on waiting_list (slot_date, slot_index, created_at)

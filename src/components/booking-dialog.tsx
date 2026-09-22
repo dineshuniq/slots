@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { MAX_RECRUITER_EMAIL, MAX_RECRUITER_PHONE } from "@/lib/contact";
 import {
   APPROVAL_LABEL,
   DURATION_CHOICES,
@@ -46,7 +47,8 @@ type Props = {
 };
 
 /**
- * Collects the two mandatory fields: Company Name and Session Type.
+ * Collects the two mandatory fields, Company Name and Session Type, plus an
+ * optional recruiter contact.
  *
  * Candidates are never shown a panel - availability is consolidated across
  * panels and the server allocates whichever one is free. Controllers do pick,
@@ -66,6 +68,8 @@ export default function BookingDialog({
   panelsFreeFor,
 }: Props) {
   const [companyName, setCompanyName] = useState("");
+  const [recruiterPhone, setRecruiterPhone] = useState("");
+  const [recruiterEmail, setRecruiterEmail] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>("Interview");
   const [candidateId, setCandidateId] = useState("");
   const [slotCount, setSlotCount] = useState(target.slotCount);
@@ -127,6 +131,8 @@ export default function BookingDialog({
           slotIndex: target.slotIndex,
           slotCount,
           companyName: companyName.trim(),
+          recruiterPhone: recruiterPhone.trim(),
+          recruiterEmail: recruiterEmail.trim(),
           sessionType,
           ...(role === "controller"
             ? waitlisting
@@ -324,6 +330,32 @@ export default function BookingDialog({
               className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
             />
           </div>
+
+          <fieldset>
+            <legend className="block text-sm font-medium text-slate-700">
+              Recruiter Contact
+            </legend>
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+              <input
+                type="tel"
+                aria-label="Recruiter phone"
+                maxLength={MAX_RECRUITER_PHONE}
+                value={recruiterPhone}
+                onChange={(event) => setRecruiterPhone(event.target.value)}
+                placeholder="Phone"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              />
+              <input
+                type="email"
+                aria-label="Recruiter email"
+                maxLength={MAX_RECRUITER_EMAIL}
+                value={recruiterEmail}
+                onChange={(event) => setRecruiterEmail(event.target.value)}
+                placeholder="Email"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              />
+            </div>
+          </fieldset>
 
           <fieldset>
             <legend className="block text-sm font-medium text-slate-700">

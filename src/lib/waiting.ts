@@ -18,6 +18,8 @@ export type WaitingEntry = {
   slotCount: number;
   companyName: string;
   sessionType: SessionType;
+  recruiterPhone: string | null;
+  recruiterEmail: string | null;
   reason: "slot_full" | "panel_closed";
   createdAt: string;
   /** 1 is next in line for that time. */
@@ -34,6 +36,8 @@ type WaitingRow = {
   slot_count: number;
   company_name: string;
   session_type: SessionType;
+  recruiter_phone: string | null;
+  recruiter_email: string | null;
   reason: "slot_full" | "panel_closed";
   created_at: string;
   position: number;
@@ -49,6 +53,8 @@ function toEntry(row: WaitingRow, viewerCandidateId: string | null): WaitingEntr
     slotCount: Number(row.slot_count),
     companyName: row.company_name,
     sessionType: row.session_type,
+    recruiterPhone: row.recruiter_phone,
+    recruiterEmail: row.recruiter_email,
     reason: row.reason,
     createdAt: new Date(row.created_at).toISOString(),
     position: Number(row.position),
@@ -70,6 +76,8 @@ export async function listWaiting(
            w.slot_count,
            w.company_name,
            w.session_type,
+           w.recruiter_phone,
+           w.recruiter_email,
            w.reason,
            w.created_at,
            row_number() over (
@@ -100,6 +108,8 @@ export type JoinInput = {
   slotCount: number;
   companyName: string;
   sessionType: SessionType;
+  recruiterPhone?: string | null;
+  recruiterEmail?: string | null;
   reason?: "slot_full" | "panel_closed";
 };
 
@@ -107,10 +117,11 @@ export async function joinWaitingList(input: JoinInput): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     insert into waiting_list
       (candidate_id, slot_date, slot_index, slot_count, company_name,
-       session_type, reason)
+       session_type, recruiter_phone, recruiter_email, reason)
     values
       (${input.candidateId}, ${input.date}::date, ${input.slotIndex},
        ${input.slotCount}, ${input.companyName}, ${input.sessionType},
+       ${input.recruiterPhone ?? null}, ${input.recruiterEmail ?? null},
        ${input.reason ?? "slot_full"})
     returning id
   `;
@@ -148,6 +159,8 @@ type DayBooking = {
   slot_count: number;
   company_name: string;
   session_type: SessionType;
+  recruiter_phone: string | null;
+  recruiter_email: string | null;
 };
 
 type Span = { start: number; end: number };
@@ -212,7 +225,9 @@ export async function closePanelForDay(
              b.slot_index,
              b.slot_count,
              b.company_name,
-             b.session_type
+             b.session_type,
+             b.recruiter_phone,
+             b.recruiter_email
         from bookings b
         join candidates c on c.id = b.candidate_id
        where b.slot_date = ${date}::date
@@ -268,11 +283,12 @@ export async function closePanelForDay(
       await tx`
         insert into waiting_list
           (candidate_id, slot_date, slot_index, slot_count, company_name,
-           session_type, reason)
+           session_type, recruiter_phone, recruiter_email, reason)
         values
           (${booking.candidate_id}, ${date}::date, ${from},
            ${booking.slot_count}, ${booking.company_name},
-           ${booking.session_type}, 'panel_closed')
+           ${booking.session_type}, ${booking.recruiter_phone ?? null},
+           ${booking.recruiter_email ?? null}, 'panel_closed')
         on conflict do nothing
       `;
       outcome.waitlisted.push({
@@ -306,6 +322,8 @@ export type WaitingRecord = {
   slotCount: number;
   companyName: string;
   sessionType: SessionType;
+  recruiterPhone: string | null;
+  recruiterEmail: string | null;
 };
 
 export async function findWaitingEntry(
@@ -320,6 +338,8 @@ export async function findWaitingEntry(
       slot_count: number;
       company_name: string;
       session_type: SessionType;
+      recruiter_phone: string | null;
+      recruiter_email: string | null;
     }[]
   >`
     select id,
@@ -328,7 +348,9 @@ export async function findWaitingEntry(
            slot_index,
            slot_count,
            company_name,
-           session_type
+           session_type,
+           recruiter_phone,
+           recruiter_email
       from waiting_list
      where id = ${id} and status = 'waiting'
      limit 1
@@ -343,6 +365,8 @@ export async function findWaitingEntry(
     slotCount: Number(row.slot_count),
     companyName: row.company_name,
     sessionType: row.session_type,
+    recruiterPhone: row.recruiter_phone,
+    recruiterEmail: row.recruiter_email,
   };
 }
 

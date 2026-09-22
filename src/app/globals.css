@@ -51,25 +51,35 @@ body {
    it marks. The sequence is rendered twice and shifted by exactly half its
    width, so the loop closes on itself with no visible jump.
    --------------------------------------------------------------------------- */
-@keyframes need-mock-scroll {
+/* One chevron on a 14px tile, repeated across the element as a mask so the
+   colour stays a Tailwind background class rather than being baked into the
+   SVG. Shifting by exactly one tile makes the loop seamless. */
+@keyframes need-mock-drift {
   from {
-    transform: translateX(0);
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
   }
   to {
-    transform: translateX(-50%);
+    -webkit-mask-position: -18px 0;
+    mask-position: -18px 0;
   }
 }
 
-.need-mock-track {
-  display: flex;
-  width: max-content;
-  animation: need-mock-scroll 6s linear infinite;
+.need-mock-field {
+  --need-mock-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M9 2 4 7l5 5' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-image: var(--need-mock-tile);
+  mask-image: var(--need-mock-tile);
+  -webkit-mask-size: 18px 18px;
+  mask-size: 18px 18px;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  animation: need-mock-drift 0.7s linear infinite;
 }
 
-/* Motion that cannot be stopped is a problem for some people; the colour and
-   the words still carry the message without it. */
+/* Motion that cannot be stopped is a problem for some people; the chevrons and
+   the label still carry the message standing still. */
 @media (prefers-reduced-motion: reduce) {
-  .need-mock-track {
+  .need-mock-field {
     animation: none;
   }
 }

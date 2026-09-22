@@ -260,11 +260,15 @@ export default function BookingBoard({
             return (
               <div
                 key={slot.index}
-                className={`mb-3 break-inside-avoid overflow-hidden rounded-xl shadow-sm ${
+                className={`relative isolate mb-3 break-inside-avoid overflow-hidden rounded-xl shadow-sm ${
                   past ? "bg-slate-400 text-white" : "bg-indigo-600 text-white"
                 }`}
               >
-                {ownNeedsMock ? <NeedMock /> : null}
+                {ownNeedsMock ? (
+                  <div className="px-4 pt-3">
+                    <NeedMock onDark />
+                  </div>
+                ) : null}
 
                 <div className="flex items-center gap-4 px-4 py-3">
                 <span className="shrink-0 text-2xl leading-none font-bold tracking-tight">
@@ -487,10 +491,18 @@ export default function BookingBoard({
               {detailed.length > 0 ? (
                 <ul className="mt-2 space-y-2 border-t border-slate-900/5 pt-2">
                   {detailed.map((booking) => (
-                    <li key={booking.id} className="text-xs">
+                    <li
+                      key={booking.id}
+                      // The chevrons need a box of their own to run across.
+                      className={`text-xs ${
+                        booking.needsMock && !past
+                          ? "relative isolate overflow-hidden rounded-lg px-1.5 py-1"
+                          : ""
+                      }`}
+                    >
                       {booking.needsMock && !past ? (
                         <div className="mb-1.5">
-                          <NeedMock size="strip" />
+                          <NeedMock compact />
                         </div>
                       ) : null}
 

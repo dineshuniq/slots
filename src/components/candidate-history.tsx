@@ -133,6 +133,7 @@ export default function CandidateHistory({ candidateId, onClose }: Props) {
                   <th className="pb-2 font-semibold">Time</th>
                   <th className="pb-2 font-semibold">Panel</th>
                   <th className="pb-2 font-semibold">Company</th>
+                  <th className="pb-2 font-semibold">Recruiter</th>
                   <th className="pb-2 font-semibold">Type</th>
                   <th className="pb-2 font-semibold">Status</th>
                 </tr>
@@ -165,6 +166,30 @@ export default function CandidateHistory({ candidateId, onClose }: Props) {
                       </td>
                       <td className="py-2.5 font-medium">{session.panelId}</td>
                       <td className="py-2.5">{session.companyName}</td>
+                      <td className="py-2.5">
+                        {session.recruiterPhone || session.recruiterEmail ? (
+                          <span className="flex flex-col leading-tight">
+                            {session.recruiterPhone ? (
+                              <a
+                                href={`tel:${session.recruiterPhone}`}
+                                className="tabular-nums underline decoration-slate-300 underline-offset-2 hover:decoration-current"
+                              >
+                                {session.recruiterPhone}
+                              </a>
+                            ) : null}
+                            {session.recruiterEmail ? (
+                              <a
+                                href={`mailto:${session.recruiterEmail}`}
+                                className="truncate underline decoration-slate-300 underline-offset-2 hover:decoration-current"
+                              >
+                                {session.recruiterEmail}
+                              </a>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">&mdash;</span>
+                        )}
+                      </td>
                       <td className="py-2.5">{session.sessionType}</td>
                       <td className="py-2.5">
                         <span

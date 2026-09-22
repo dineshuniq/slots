@@ -1,46 +1,53 @@
 type Props = {
-  /** "bar" spans a card; "strip" is the thinner version for a grid chip. */
-  size?: "bar" | "strip";
+  /** Lighter chevrons, for a card that is already a solid dark colour. */
+  onDark?: boolean;
+  /** Smaller label, for a grid chip rather than a full-width card. */
+  compact?: boolean;
+  /** false leaves only the chevrons, where a tag would crowd the card. */
+  label?: boolean;
 };
-
-/** One pass of the message; the track renders it twice to loop seamlessly. */
-const SEQUENCE = Array.from({ length: 6 });
 
 /**
  * Marks a session whose candidate has not sat their mock yet.
  *
- * The text repeats across the whole width and slides right to left, so it
- * reads as unfinished business wherever the session appears. It disappears by
- * itself: `needsMock` comes from whether a mock is recorded for that candidate
- * on that date, so ticking one off on the Mock page clears this on the next
- * poll without anything here having to know.
+ * Chevrons drift right to left across the whole card, with an optional label.
+ * The chevrons are a masked background layer sitting behind the text, so the
+ * card keeps its own shape and nothing has to make room for a banner. The host
+ * element needs `relative isolate overflow-hidden`.
+ *
+ * It clears itself: `needsMock` comes from whether a mock is recorded for that
+ * candidate on that date, so ticking one off on the Mock page removes this on
+ * the next poll without anything here having to know.
  */
-export default function NeedMock({ size = "bar" }: Props) {
-  const height = size === "bar" ? "py-1.5 text-[11px]" : "py-0.5 text-[9px]";
-
+export default function NeedMock({
+  onDark = false,
+  compact = false,
+  label = true,
+}: Props) {
   return (
-    <div
-      className={`overflow-hidden rounded bg-amber-400 font-bold tracking-wider text-amber-950 uppercase ${height}`}
-      // The words are already in the DOM twice for the loop; announce once.
-      role="status"
-      aria-label="Needs mock"
-    >
-      <div className="need-mock-track" aria-hidden>
-        {/* Rendered twice: the animation shifts by half the track width. */}
-        {[0, 1].map((pass) => (
-          <div key={pass} className="flex shrink-0">
-            {SEQUENCE.map((_, index) => (
-              <span
-                key={index}
-                className="flex shrink-0 items-center gap-1 px-2 whitespace-nowrap"
-              >
-                NEED-MOCK
-                <span className="opacity-70">&#8249;&#8249;&#8249;</span>
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
+    <>
+      <span
+        // Without the label the chevrons carry the message on their own, so
+        // they are what gets announced.
+        {...(label
+          ? { "aria-hidden": true }
+          : { role: "status", "aria-label": "Needs mock" })}
+        className={`need-mock-field pointer-events-none absolute inset-0 -z-10 ${
+          onDark ? "bg-amber-300/45" : "bg-amber-400/45"
+        }`}
+      />
+
+      {label ? (
+        <span
+          role="status"
+          aria-label="Needs mock"
+          className={`inline-flex w-fit items-center rounded bg-amber-400 font-bold tracking-wider text-amber-950 uppercase ${
+            compact ? "px-1.5 py-px text-[9px]" : "px-2 py-0.5 text-[10px]"
+          }`}
+        >
+          Need mock
+        </span>
+      ) : null}
+    </>
   );
 }

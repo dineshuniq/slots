@@ -24,6 +24,10 @@ export type ZoomLevel = {
   /** Width of the sticky time column. */
   timeColumn: string;
   text: string;
+  /** The candidate's name: the thing a controller reads first. */
+  nameText: string;
+  /** The company under it, a step down but still legible. */
+  companyText: string;
   padding: string;
   /** Whether a chip has room for company and session type. */
   detail: boolean;
@@ -36,6 +40,8 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
     column: "7.5rem",
     timeColumn: "4.25rem",
     text: "text-[10px]",
+    nameText: "text-[11px]",
+    companyText: "text-[10px]",
     padding: "p-1",
     detail: false,
   },
@@ -45,6 +51,8 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
     column: "11rem",
     timeColumn: "5.5rem",
     text: "text-[11px]",
+    nameText: "text-sm",
+    companyText: "text-[11px]",
     padding: "p-1.5",
     detail: true,
   },
@@ -54,6 +62,8 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
     column: "14rem",
     timeColumn: "6.5rem",
     text: "text-xs",
+    nameText: "text-base",
+    companyText: "text-xs",
     padding: "p-2",
     detail: true,
   },
