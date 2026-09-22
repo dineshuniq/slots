@@ -1,9 +1,12 @@
 import { isConflictViolation, sql } from "@/lib/db";
 import { fail, forbidden, json, readJson, readString, serverError, unauthorized } from "@/lib/http";
 import { findPanel } from "@/lib/queries";
+import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { getSession } from "@/lib/session";
 import {
   fitsInDay,
+  longDateLabel,
+  sessionRangeLabel,
   isDateInWindow,
   isSlotInPast,
   isValidDateKey,
@@ -19,19 +22,22 @@ type BookingRow = {
   slot_date: string;
   slot_index: number;
   slot_count: number;
+  candidate_name: string;
 };
 
 async function loadBooking(id: string): Promise<BookingRow | null> {
   const rows = await sql<BookingRow[]>`
-    select id,
-           panel_id,
-           candidate_id,
-           to_char(slot_date, 'YYYY-MM-DD') as slot_date,
-           slot_index,
-           slot_count
-      from bookings
-     where id = ${id}
-       and status = 'booked'
+    select b.id,
+           b.panel_id,
+           b.candidate_id,
+           to_char(b.slot_date, 'YYYY-MM-DD') as slot_date,
+           b.slot_index,
+           b.slot_count,
+           c.name as candidate_name
+      from bookings b
+      join candidates c on c.id = b.candidate_id
+     where b.id = ${id}
+       and b.status = 'booked'
      limit 1
   `;
   return rows[0] ?? null;
@@ -103,6 +109,27 @@ export async function PATCH(request: Request, { params }: Params) {
       `;
     });
 
+    await recordAudit({
+      session,
+      action: AUDIT_ACTIONS.bookingMoved,
+      summary:
+        `${session.name} moved ${booking.candidate_name} from ` +
+        `${booking.panel_id} ${longDateLabel(booking.slot_date)} ` +
+        `${sessionRangeLabel(booking.slot_index, booking.slot_count)} to ` +
+        `${panel.id} ${longDateLabel(date)} ` +
+        `${sessionRangeLabel(slotIndex, booking.slot_count)}.`,
+      subjectLabel: `${booking.candidate_name} on ${panel.id}`,
+      details: {
+        bookingId: booking.id,
+        from: {
+          panelId: booking.panel_id,
+          date: booking.slot_date,
+          slotIndex: booking.slot_index,
+        },
+        to: { panelId: panel.id, date, slotIndex },
+      },
+    });
+
     return json({ id: booking.id, moved: true });
   } catch (error) {
     if (isConflictViolation(error)) {
@@ -139,6 +166,23 @@ export async function DELETE(_request: Request, { params }: Params) {
        where id = ${booking.id}
          and status = 'booked'
     `;
+
+    await recordAudit({
+      session,
+      action: AUDIT_ACTIONS.bookingCancelled,
+      summary:
+        `${session.name} cancelled ${booking.candidate_name}'s session on ` +
+        `${booking.panel_id}, ${longDateLabel(booking.slot_date)} ` +
+        `${sessionRangeLabel(booking.slot_index, booking.slot_count)}.`,
+      subjectLabel: `${booking.candidate_name} on ${booking.panel_id}`,
+      details: {
+        bookingId: booking.id,
+        panelId: booking.panel_id,
+        date: booking.slot_date,
+        slotIndex: booking.slot_index,
+        slotCount: booking.slot_count,
+      },
+    });
 
     return json({ id: booking.id, cancelled: true });
   } catch (error) {

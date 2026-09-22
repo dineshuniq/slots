@@ -15,6 +15,7 @@ const CONTROLLER_LINKS = [
   { href: "/schedule", label: "Schedule" },
   { href: "/book", label: "Book" },
   { href: "/candidates", label: "Candidates" },
+  { href: "/audit", label: "Audit Logs" },
 ];
 
 export default function AppHeader({ role, displayName }: Props) {

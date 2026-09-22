@@ -9,15 +9,28 @@ import {
   unauthorized,
 } from "@/lib/http";
 import {
+  deleteCandidates,
+  describeCandidates,
   insertCandidate,
   listCandidateRecords,
   listCandidates,
   listPanels,
+  setCandidatesActive,
 } from "@/lib/queries";
+import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { getSession, isController } from "@/lib/session";
 import { generateToken } from "@/lib/tokens";
 
 const MAX_NAME = 120;
+
+/** Keeps a bulk audit sentence readable when someone selects fifty rows. */
+const NAMES_IN_SUMMARY = 5;
+
+function summariseNames(names: string[]): string {
+  if (names.length <= NAMES_IN_SUMMARY) return names.join(", ");
+  const shown = names.slice(0, NAMES_IN_SUMMARY).join(", ");
+  return `${shown} and ${names.length - NAMES_IN_SUMMARY} more`;
+}
 const MAX_PHONE = 32;
 
 /** Roster for the Candidates page and for booking on a candidate's behalf. */
@@ -77,6 +90,14 @@ export async function POST(request: Request) {
           name,
           phone: phone || null,
         });
+        await recordAudit({
+          session,
+          action: AUDIT_ACTIONS.candidateCreated,
+          summary: `${session.name} issued token ${token} to ${name}.`,
+          subjectLabel: `${name} (${token})`,
+          details: { candidateId: id, token, name, phone: phone || null },
+        });
+
         return json({ id, token, name, phone: phone || null }, 201);
       } catch (error) {
         if (isUniqueViolation(error)) continue;
@@ -88,6 +109,119 @@ export async function POST(request: Request) {
       "Could not allocate a free token. Disable some unused tokens and try again.",
       503,
     );
+  } catch (error) {
+    return serverError(error);
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DELETE = 200;
+
+/**
+ * Permanently delete candidates, and with them every booking they hold.
+ *
+ * Takes a list so the Candidates page can clear a multi-selection in one
+ * round trip, which also makes it all-or-nothing rather than half-applied.
+ */
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session) return unauthorized();
+    if (!isController(session)) return forbidden();
+
+    const body = await readJson(request);
+    const raw = body.ids;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return fail("Select at least one candidate to delete.", 400);
+    }
+    if (raw.length > MAX_DELETE) {
+      return fail(`Delete at most ${MAX_DELETE} candidates at a time.`, 400);
+    }
+
+    const ids = [...new Set(raw)].filter(
+      (id): id is string => typeof id === "string" && UUID.test(id),
+    );
+    if (ids.length !== new Set(raw).size) {
+      return fail("One of those candidates is not valid.", 400);
+    }
+
+    // Read the names before they are gone, so the log can say who was removed.
+    const names = await describeCandidates(ids);
+
+    const result = await deleteCandidates(ids);
+    if (result.deleted === 0) return fail("Nothing was deleted.", 404);
+
+    await recordAudit({
+      session,
+      action: AUDIT_ACTIONS.candidateDeleted,
+      summary:
+        `${session.name} deleted ${result.deleted} candidate${result.deleted === 1 ? "" : "s"}` +
+        (names.length > 0 ? ` (${summariseNames(names)})` : "") +
+        (result.bookingsRemoved > 0
+          ? `, cancelling ${result.bookingsRemoved} booking${result.bookingsRemoved === 1 ? "" : "s"}.`
+          : "."),
+      subjectLabel: names.join(", ") || null,
+      details: { ids, ...result },
+    });
+
+    return json(result);
+  } catch (error) {
+    return serverError(error);
+  }
+}
+
+/**
+ * Enable or disable several tokens at once, for the Candidates page selection.
+ * Reversible, so unlike DELETE it needs no confirmation and touches no bookings.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session) return unauthorized();
+    if (!isController(session)) return forbidden();
+
+    const body = await readJson(request);
+
+    if (typeof body.active !== "boolean") {
+      return fail("active must be true or false.", 400);
+    }
+
+    const raw = body.ids;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return fail("Select at least one candidate.", 400);
+    }
+    if (raw.length > MAX_DELETE) {
+      return fail(`Update at most ${MAX_DELETE} candidates at a time.`, 400);
+    }
+
+    const unique = new Set(raw);
+    const ids = [...unique].filter(
+      (id): id is string => typeof id === "string" && UUID.test(id),
+    );
+    if (ids.length !== unique.size) {
+      return fail("One of those candidates is not valid.", 400);
+    }
+
+    // Read the names before updating, so the sentence can name them.
+    const names = await describeCandidates(ids);
+
+    const updated = await setCandidatesActive(ids, body.active);
+    if (updated === 0) return fail("Nothing was updated.", 404);
+
+    await recordAudit({
+      session,
+      action: body.active
+        ? AUDIT_ACTIONS.candidateEnabled
+        : AUDIT_ACTIONS.candidateDisabled,
+      summary:
+        `${session.name} ${body.active ? "enabled" : "disabled"} ` +
+        `${updated} token${updated === 1 ? "" : "s"}` +
+        (names.length > 0 ? `: ${summariseNames(names)}.` : "."),
+      subjectLabel: names.join(", ") || null,
+      details: { ids, active: body.active, updated },
+    });
+
+    return json({ updated, active: body.active });
   } catch (error) {
     return serverError(error);
   }

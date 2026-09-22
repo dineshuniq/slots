@@ -2,6 +2,7 @@ import { fail, json, readJson, readString, serverError } from "@/lib/http";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { findControllerByUsername } from "@/lib/queries";
 import { clearAttempts, clientKey, tooManyAttempts } from "@/lib/rate-limit";
+import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { createSession } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -38,6 +39,19 @@ export async function POST(request: Request) {
       controllerId: controller.id,
       username: controller.username,
       name: controller.name,
+    });
+
+    await recordAudit({
+      session: {
+        role: "controller",
+        controllerId: controller.id,
+        username: controller.username,
+        name: controller.name,
+        exp: 0,
+      },
+      action: AUDIT_ACTIONS.controllerSignedIn,
+      summary: `${controller.name} signed in.`,
+      details: { username: controller.username },
     });
 
     return json({ role: "controller", redirectTo: "/schedule" });

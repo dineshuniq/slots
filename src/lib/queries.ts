@@ -277,6 +277,8 @@ export type CandidateRecord = {
   phone: string | null;
   active: boolean;
   bookingCount: number;
+  /** When the token was issued; the roster is newest-first. */
+  createdAt: string;
 };
 
 /** Full roster for the controller's Candidates page, disabled ones included. */
@@ -289,6 +291,7 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
       phone: string | null;
       active: boolean;
       booking_count: number;
+      created_at: string;
     }[]
   >`
     select c.id,
@@ -296,11 +299,12 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
            c.name,
            c.phone,
            c.active,
+           c.created_at,
            count(b.id) filter (where b.status = 'booked')::int as booking_count
       from candidates c
       left join bookings b on b.candidate_id = c.id
      group by c.id
-     order by c.active desc, c.name
+     order by c.created_at desc, c.token
   `;
 
   return rows.map((row) => ({
@@ -310,7 +314,60 @@ export async function listCandidateRecords(): Promise<CandidateRecord[]> {
     phone: row.phone,
     active: row.active,
     bookingCount: Number(row.booking_count),
+    createdAt: new Date(row.created_at).toISOString(),
   }));
+}
+
+/**
+ * Enables or disables several tokens at once. Reversible, unlike deletion, so
+ * it leaves bookings alone: a disabled candidate simply cannot sign in.
+ */
+/** Names for a set of candidates, for audit sentences. */
+export async function describeCandidates(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  const rows = await sql<{ name: string; token: string }[]>`
+    select name, token from candidates where id = any(${ids}::uuid[]) order by name
+  `;
+  return rows.map((row) => `${row.name} (${row.token})`);
+}
+
+export async function setCandidatesActive(
+  ids: string[],
+  active: boolean,
+): Promise<number> {
+  if (ids.length === 0) return 0;
+
+  const rows = await sql<{ id: string }[]>`
+    update candidates
+       set active = ${active}
+     where id = any(${ids}::uuid[])
+     returning id
+  `;
+  return rows.length;
+}
+
+/**
+ * Permanently removes candidates and, by cascade, every booking they hold.
+ * Returns what was removed so the caller can say so plainly.
+ */
+export async function deleteCandidates(
+  ids: string[],
+): Promise<{ deleted: number; bookingsRemoved: number }> {
+  if (ids.length === 0) return { deleted: 0, bookingsRemoved: 0 };
+
+  const [counted] = await sql<{ n: number }[]>`
+    select count(*)::int as n
+      from bookings
+     where candidate_id = any(${ids}::uuid[])
+       and status = 'booked'
+  `;
+
+  const removed = await sql<{ id: string }[]>`
+    delete from candidates where id = any(${ids}::uuid[]) returning id
+  `;
+
+  return { deleted: removed.length, bookingsRemoved: Number(counted.n) };
 }
 
 export async function insertCandidate(input: {

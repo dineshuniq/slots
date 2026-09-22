@@ -11,6 +11,7 @@ type CandidateRecord = {
   phone: string | null;
   active: boolean;
   bookingCount: number;
+  createdAt: string;
 };
 
 type Filter = "all" | "active" | "disabled";
@@ -21,6 +22,9 @@ export default function CandidatesBoard() {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -90,6 +94,91 @@ export default function CandidatesBoard() {
     }
   }
 
+  function toggleOne(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function setSelectedActive(active: boolean) {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    setNotice(null);
+    setBulkBusy(true);
+    try {
+      const response = await fetch("/api/candidates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, active }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setNotice(result.error ?? "Could not update those tokens.");
+        return;
+      }
+
+      // Selection is kept: enabling then disabling the same batch is common.
+      setNotice(
+        `${active ? "Enabled" : "Disabled"} ${result.updated} token${result.updated === 1 ? "" : "s"}.`,
+      );
+      refresh();
+    } catch {
+      setNotice("Could not reach the server.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function deleteSelected() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    const chosen = records.filter((record) => selected.has(record.id));
+    const bookings = chosen.reduce((sum, record) => sum + record.bookingCount, 0);
+
+    const confirmed = window.confirm(
+      bookings > 0
+        ? `Delete ${ids.length} candidate${ids.length === 1 ? "" : "s"}?\n\nThis also cancels ${bookings} booking${bookings === 1 ? "" : "s"} and frees those slots. It cannot be undone.`
+        : `Delete ${ids.length} candidate${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setNotice(null);
+    setDeleting(true);
+    try {
+      const response = await fetch("/api/candidates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setNotice(result.error ?? "Could not delete those candidates.");
+        return;
+      }
+
+      setSelected(new Set());
+      if (issued && ids.includes(issued.id)) setIssued(null);
+      setNotice(
+        `Deleted ${result.deleted} candidate${result.deleted === 1 ? "" : "s"}` +
+          (result.bookingsRemoved > 0
+            ? ` and ${result.bookingsRemoved} booking${result.bookingsRemoved === 1 ? "" : "s"}.`
+            : "."),
+      );
+      refresh();
+    } catch {
+      setNotice("Could not reach the server.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return records.filter((record) => {
@@ -106,6 +195,22 @@ export default function CandidatesBoard() {
 
   const activeCount = records.filter((record) => record.active).length;
 
+  const visibleIds = visible.map((record) => record.id);
+  const selectedVisible = visibleIds.filter((id) => selected.has(id));
+  const allVisibleSelected =
+    visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+  // Selections the current search has scrolled out of sight still count.
+  const hiddenSelected = selected.size - selectedVisible.length;
+
+  function toggleAllVisible() {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
   const field =
     "mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
 
@@ -116,7 +221,7 @@ export default function CandidatesBoard() {
           Candidates
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          {activeCount} active of {records.length} token
+          Newest first &middot; {activeCount} active of {records.length} token
           {records.length === 1 ? "" : "s"}
         </p>
       </header>
@@ -266,11 +371,64 @@ export default function CandidatesBoard() {
           />
         </div>
 
+        {selected.size > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm">
+            <span className="font-medium text-slate-900">
+              {selected.size} selected
+            </span>
+            {hiddenSelected > 0 ? (
+              <span className="text-xs text-slate-500">
+                ({hiddenSelected} not shown by the current filter)
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              Clear selection
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedActive(true)}
+              disabled={bulkBusy || deleting}
+              className="rounded-lg border border-emerald-400 px-2.5 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Enable
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedActive(false)}
+              disabled={bulkBusy || deleting}
+              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Disable
+            </button>
+            <button
+              type="button"
+              onClick={deleteSelected}
+              disabled={deleting || bulkBusy}
+              className="ml-auto rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleting ? "Deleting..." : `Delete ${selected.size}`}
+            </button>
+          </div>
+        ) : null}
+
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="thin-scroll overflow-x-auto">
             <table className="w-full min-w-[40rem] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs tracking-wider text-slate-500 uppercase">
                 <tr>
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all shown"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-slate-900"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-semibold">Token</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
@@ -302,6 +460,15 @@ export default function CandidatesBoard() {
                         record.active ? "" : "bg-slate-50 text-slate-400"
                       }`}
                     >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${record.name}`}
+                          checked={selected.has(record.id)}
+                          onChange={() => toggleOne(record.id)}
+                          className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-slate-900"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-mono text-base font-semibold tracking-widest">
                         {record.token}
                       </td>

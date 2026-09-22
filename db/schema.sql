@@ -192,3 +192,26 @@ alter table candidates add column if not exists phone text;
 -- now, so the column and its index go.
 drop index if exists candidates_panel_idx;
 alter table candidates drop column if exists panel_id;
+
+-- Controller audit trail -----------------------------------------------------
+-- One row per action worth answering "who changed this, and when" about.
+--
+-- `summary` is the finished English sentence, written at the time of the
+-- action. Storing it rather than rebuilding it on read means the log still
+-- reads correctly after the code that produced it changes, and keeps the
+-- Audit Logs page a plain list.
+create table if not exists audit_logs (
+  id            bigserial   primary key,
+  occurred_at   timestamptz not null default now(),
+  actor_role    text        not null check (actor_role in ('controller', 'candidate', 'system')),
+  actor_id      uuid,
+  actor_name    text        not null,
+  action        text        not null,
+  summary       text        not null,
+  subject_label text,
+  details       jsonb       not null default '{}'::jsonb
+);
+
+create index if not exists audit_logs_recent_idx on audit_logs (occurred_at desc);
+create index if not exists audit_logs_action_idx on audit_logs (action);
+create index if not exists audit_logs_actor_idx on audit_logs (actor_name);

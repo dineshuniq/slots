@@ -270,3 +270,37 @@ export function canStartAt(
   if (!fitsInDay(index, slotCount)) return false;
   return !isSlotInPast(dateKey, index, instant);
 }
+
+// --- extra (payable) hours --------------------------------------------------
+
+/**
+ * Sessions outside 09:00-18:00 are chargeable, so the booking screen has to
+ * say so before anyone picks one.
+ *
+ * A block counts as extra when it starts before 09:00 or ends after 18:00,
+ * which keeps 08:30-09:00 and 18:00-18:30 on the payable side while leaving
+ * 17:30-18:00 as normal hours.
+ */
+export const NORMAL_START_MINUTES = 9 * 60; // 09:00
+export const NORMAL_END_MINUTES = 18 * 60; // 18:00
+
+/** Shown on any session touching extra hours. */
+export const APPROVAL_LABEL = "Need Coordinator Approval";
+export const EXTRA_HOURS_NOTE = "before 9:00 AM and after 6:00 PM";
+
+export function isExtraHoursSlot(index: number): boolean {
+  const start = slotStartMinutes(index);
+  return (
+    start < NORMAL_START_MINUTES || start + SLOT_MINUTES > NORMAL_END_MINUTES
+  );
+}
+
+/**
+ * Whether a session of this length touches extra hours at all - a 2-hour
+ * session starting at 17:00 is payable even though 17:00 itself is not.
+ */
+export function hasExtraHours(index: number, slotCount: number): boolean {
+  return coveredSlots(index, slotCount)
+    .filter((covered) => covered < SLOT_COUNT)
+    .some(isExtraHoursSlot);
+}

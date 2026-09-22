@@ -6,9 +6,14 @@ import {
 } from "@/lib/db";
 import { fail, json, readJson, readString, serverError, unauthorized } from "@/lib/http";
 import { findPanel, listFreePanels } from "@/lib/queries";
+import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { getSession } from "@/lib/session";
 import {
+  durationLabel,
   fitsInDay,
+  hasExtraHours,
+  longDateLabel,
+  sessionRangeLabel,
   isDateInWindow,
   isSlotInPast,
   isValidDateKey,
@@ -69,20 +74,23 @@ export async function POST(request: Request) {
     }
 
     let candidateId: string;
+    let candidateName = "";
 
     if (session.role === "candidate") {
       if (isSlotInPast(date, slotIndex)) {
         return fail("That time has already passed.", 400);
       }
       candidateId = session.candidateId;
+      candidateName = session.name;
     } else {
       candidateId = readString(body, "candidateId");
       if (!candidateId) return fail("Select a candidate.", 400);
 
-      const rows = await sql<{ id: string }[]>`
-        select id from candidates where id = ${candidateId} and active limit 1
+      const rows = await sql<{ id: string; name: string }[]>`
+        select id, name from candidates where id = ${candidateId} and active limit 1
       `;
       if (!rows[0]) return fail("Unknown candidate.", 404);
+      candidateName = rows[0].name;
     }
 
     // Panels are allocated per booking, so a candidate can hold several a day -
@@ -150,6 +158,29 @@ export async function POST(request: Request) {
                ${companyName}, ${sessionType}, ${session.role})
             returning id
           `;
+          await recordAudit({
+            session,
+            action: AUDIT_ACTIONS.bookingCreated,
+            summary:
+              `${session.name} booked ${candidateName} on ${panel.id}, ` +
+              `${longDateLabel(date)} ${sessionRangeLabel(start, length)} ` +
+              `(${durationLabel(length)}, ${sessionType} for ${companyName})` +
+              (hasExtraHours(start, length)
+                ? " - extra hours, needs coordinator approval."
+                : "."),
+            subjectLabel: `${candidateName} on ${panel.id}`,
+            details: {
+              bookingId: inserted[0].id,
+              candidateId,
+              panelId: panel.id,
+              date,
+              slotIndex: start,
+              slotCount: length,
+              companyName,
+              sessionType,
+            },
+          });
+
           return json({ id: inserted[0].id, panelId: panel.id, slotCount }, 201);
         } catch (error) {
           if (isDeadlock(error)) {

@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { durationLabel, longDateLabel, sessionRangeLabel } from "@/lib/time";
+import {
+  APPROVAL_LABEL,
+  durationLabel,
+  EXTRA_HOURS_NOTE,
+  hasExtraHours,
+  longDateLabel,
+  sessionRangeLabel,
+} from "@/lib/time";
 import {
   SESSION_TYPES,
   type CandidateSummary,
@@ -136,6 +143,13 @@ export default function BookingDialog({
             {durationLabel(target.slotCount)}
           </span>
         </p>
+
+        {hasExtraHours(target.slotIndex, target.slotCount) ? (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <span className="font-semibold">{APPROVAL_LABEL}</span> — this
+            session runs {EXTRA_HOURS_NOTE}.
+          </p>
+        ) : null}
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           {role === "controller" ? (

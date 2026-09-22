@@ -6,11 +6,14 @@ import BookingDialog, { type BookingTarget } from "@/components/booking-dialog";
 import DateCarousel from "@/components/date-carousel";
 import SlotLegend from "@/components/slot-legend";
 import {
+  APPROVAL_LABEL,
   canStartAt,
   coveredSlots,
   DURATION_CHOICES,
   durationLabel,
+  EXTRA_HOURS_NOTE,
   fitsInDay,
+  hasExtraHours,
   isSlotInPast,
   longDateLabel,
   sessionRangeLabel,
@@ -183,7 +186,15 @@ export default function BookingBoard({
               : `${openCount} start time${openCount === 1 ? "" : "s"} open for ${durationLabel(slotCount)}`}
           </p>
         </div>
-        <SlotLegend showOwn={role === "candidate"} />
+        <div className="flex flex-col items-end gap-1">
+          <SlotLegend showOwn={role === "candidate"} />
+          <p className="text-xs text-slate-500">
+            <span className="mr-1 inline-block rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-950 uppercase">
+              {APPROVAL_LABEL}
+            </span>
+            applies {EXTRA_HOURS_NOTE}
+          </p>
+        </div>
       </section>
 
       {error ? (
@@ -208,6 +219,9 @@ export default function BookingBoard({
         {slots.map((slot) => {
           const past = slotIsPast(slot.index);
           const timeLabel = `${slotStartLabel(slot.index)} - ${slotEndLabel(slot.index)}`;
+          // Extra hours are chargeable, so this has to be obvious before
+          // anyone picks the slot, not a surprise at confirmation.
+          const needsApproval = hasExtraHours(slot.index, slotCount);
           const freePanels = panelsFreeFrom(slot.index);
           const freeCount = freePanels.length;
           const canBook =
@@ -260,6 +274,18 @@ export default function BookingBoard({
               key={slot.index}
               className={`mb-3 break-inside-avoid rounded-xl border px-4 py-3 ${tone}`}
             >
+              {needsApproval ? (
+                <p
+                  className={`-mx-4 -mt-3 mb-3 rounded-t-xl px-4 py-2 text-center text-xs font-bold tracking-wider uppercase ${
+                    past
+                      ? "bg-slate-200 text-slate-500"
+                      : "bg-amber-400 text-amber-950"
+                  }`}
+                >
+                  {APPROVAL_LABEL}
+                </p>
+              ) : null}
+
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden

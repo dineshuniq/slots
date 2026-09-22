@@ -9,6 +9,7 @@ import {
 } from "@/lib/http";
 import { hashPassword, validatePassword, verifyPassword } from "@/lib/password";
 import { findControllerById, updateControllerPassword } from "@/lib/queries";
+import { AUDIT_ACTIONS, recordAudit } from "@/lib/audit";
 import { getSession, isController } from "@/lib/session";
 
 /**
@@ -49,6 +50,13 @@ export async function POST(request: Request) {
       controller.id,
       await hashPassword(newPassword),
     );
+
+    await recordAudit({
+      session,
+      action: AUDIT_ACTIONS.controllerPasswordChanged,
+      summary: `${session.name} changed their own password.`,
+      details: { controllerId: controller.id },
+    });
 
     return json({ ok: true });
   } catch (error) {

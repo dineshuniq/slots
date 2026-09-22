@@ -40,6 +40,10 @@ const CONTROLLERS = [
   { username: "dinesh", name: "Dinesh", password: "uniq@123" },
   { username: "manik", name: "Manik", password: "uniq@123" },
   { username: "mukilan", name: "Mukilan", password: "uniq@123" },
+  { username: "kanmani", name: "Kanmani", password: "uniq@123" },
+  { username: "dyana", name: "Dyana", password: "uniq@123" },
+  { username: "mouli", name: "Mouli", password: "uniq@123" },
+  { username: "pavithra", name: "Pavithra", password: "uniq@123" },
 ];
 
 // No panel here: candidates are allocated one per booking, not per token.

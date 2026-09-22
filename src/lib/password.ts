@@ -93,7 +93,7 @@ export async function verifyPassword(
   }
 }
 
-export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MIN_LENGTH = 4;
 export const PASSWORD_MAX_LENGTH = 200;
 
 /** Returns an error message, or null when the password is acceptable. */
