@@ -148,6 +148,34 @@ export default function BookingBoard({
     [slots],
   );
 
+  /**
+   * A candidate's own session is drawn once, as a single bar across the time
+   * it occupies, instead of one card per half-hour block. Split across cards
+   * it read as several separate bookings.
+   */
+  const ownSessions = useMemo(() => {
+    const map = new Map<number, Booking>();
+    if (role !== "candidate") return map;
+
+    for (const slot of slots) {
+      for (const booking of slot.bookings) {
+        if (booking.isOwn) map.set(booking.slotIndex, booking);
+      }
+    }
+    return map;
+  }, [slots, role]);
+
+  /** Blocks the bar covers, which therefore render nothing of their own. */
+  const swallowed = useMemo(() => {
+    const set = new Set<number>();
+    for (const booking of ownSessions.values()) {
+      for (const index of coveredSlots(booking.slotIndex, booking.slotCount)) {
+        if (index !== booking.slotIndex) set.add(index);
+      }
+    }
+    return set;
+  }, [ownSessions]);
+
   // The board lists start times, not whole sessions: a block is open when a
   // panel is free for it and it has not gone by. Length is chosen in the
   // dialog, which re-checks availability for whatever is picked there.
@@ -220,6 +248,55 @@ export default function BookingBoard({
       <section className="mt-4 columns-1 gap-3 lg:columns-2">
         {slots.map((slot) => {
           const past = slotIsPast(slot.index);
+
+          // Covered by the bar above it.
+          if (swallowed.has(slot.index)) return null;
+
+          const ownSession = ownSessions.get(slot.index);
+          if (ownSession) {
+            return (
+              <div
+                key={slot.index}
+                className={`mb-3 flex break-inside-avoid items-center gap-4 rounded-xl px-4 py-3 shadow-sm ${
+                  past ? "bg-slate-400 text-white" : "bg-indigo-600 text-white"
+                }`}
+              >
+                <span className="shrink-0 text-2xl leading-none font-bold tracking-tight">
+                  {panelLabel(ownSession.panelId)}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold tabular-nums">
+                    {sessionRangeLabel(
+                      ownSession.slotIndex,
+                      ownSession.slotCount,
+                    )}
+                    <span className="ml-2 rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-medium">
+                      {durationLabel(ownSession.slotCount)}
+                    </span>
+                  </p>
+                  <p className="truncate text-sm text-white/90">
+                    {ownSession.companyName} &middot; {ownSession.sessionType}
+                  </p>
+                </div>
+
+                {past ? (
+                  <span className="shrink-0 text-xs font-medium text-white/80">
+                    Done
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => release(ownSession)}
+                    className="shrink-0 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/40 transition hover:bg-white/25"
+                  >
+                    Release
+                  </button>
+                )}
+              </div>
+            );
+          }
+
           const timeLabel = `${slotStartLabel(slot.index)} - ${slotEndLabel(slot.index)}`;
           // Extra hours are chargeable, so this has to be obvious before
           // anyone picks the slot, not a surprise at confirmation.
