@@ -25,6 +25,7 @@ import type {
 } from "@/lib/types";
 import { BUTTON, TONES } from "@/lib/tone";
 import { useNow } from "@/lib/use-now";
+import { ZOOM_LEVELS, useZoom } from "@/lib/use-zoom";
 import { usePolledResource } from "@/lib/use-poll";
 
 type Props = {
@@ -64,6 +65,7 @@ export default function ScheduleBoard({
 
   // Null until hydration, so the server and first client render agree.
   const now = useNow();
+  const { level, zoomIn, zoomOut, zoom, canZoomIn, canZoomOut } = useZoom();
 
   const { data, error, loading, refresh } = usePolledResource<
     ScheduleView & { closedPanelIds: string[]; waiting: WaitingSummary[] }
@@ -290,7 +292,7 @@ export default function ScheduleBoard({
     return counts;
   }, [bookings]);
 
-  const gridTemplateColumns = `5.5rem repeat(${panels.length}, minmax(11rem, 1fr))`;
+  const gridTemplateColumns = `${zoom.timeColumn} repeat(${panels.length}, minmax(${zoom.column}, 1fr))`;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -335,6 +337,32 @@ export default function ScheduleBoard({
           {longDateLabel(dateKey)} &middot; {bookings.length} session
           {bookings.length === 1 ? "" : "s"}
         </p>
+
+        <div className="ml-auto flex items-center gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+          <button
+            type="button"
+            onClick={zoomOut}
+            disabled={!canZoomOut}
+            aria-label="Zoom out"
+            title="Fit more of the day on screen"
+            className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            &minus;
+          </button>
+          <span className="w-16 text-center text-xs font-medium text-slate-600">
+            {ZOOM_LEVELS[level].name}
+          </span>
+          <button
+            type="button"
+            onClick={zoomIn}
+            disabled={!canZoomIn}
+            aria-label="Zoom in"
+            title="Show more of each session"
+            className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            +
+          </button>
+        </div>
       </header>
 
       {error ? (
@@ -419,14 +447,18 @@ export default function ScheduleBoard({
               <div
                 key={`time-${slotIndex}`}
                 style={{ gridColumn: 1, gridRow: slotIndex + 2 }}
-                className={`sticky left-0 z-10 border-r border-b border-slate-100 px-3 py-2 text-right ${slotIsPast(slotIndex) ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"}`}
+                className={`sticky left-0 z-10 border-r border-b border-slate-100 px-2 text-right ${zoom.detail ? "py-2" : "py-0.5"} ${slotIsPast(slotIndex) ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"}`}
               >
-                <p className="text-xs font-semibold tabular-nums">
+                <p
+                  className={`font-semibold tabular-nums ${zoom.detail ? "text-xs" : zoom.text}`}
+                >
                   {slotStartLabel(slotIndex)}
                 </p>
-                <p className="text-[10px] tabular-nums opacity-70">
-                  {slotEndLabel(slotIndex)}
-                </p>
+                {zoom.detail ? (
+                  <p className="text-[10px] tabular-nums opacity-70">
+                    {slotEndLabel(slotIndex)}
+                  </p>
+                ) : null}
               </div>
             ))}
 
@@ -453,7 +485,7 @@ export default function ScheduleBoard({
                     <div
                       key={key}
                       style={placement}
-                      className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
+                      className={`border-b border-slate-100 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
                     >
                       <div
                         draggable={!busy && !past}
@@ -485,15 +517,24 @@ export default function ScheduleBoard({
                             className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500"
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold text-slate-900">
+                            <p
+                              className={`truncate font-semibold text-slate-900 ${zoom.detail ? "text-xs" : zoom.text}`}
+                            >
                               {booking.candidateName}
                             </p>
-                            <p className="truncate text-[11px] text-slate-600">
-                              {booking.companyName}
-                            </p>
-                            <p className="mt-0.5 inline-block rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                              {booking.sessionType}
-                            </p>
+
+                            {/* At the smallest zoom a chip is one line tall,
+                                so only the name fits. */}
+                            {zoom.detail ? (
+                              <>
+                                <p className={`truncate text-slate-600 ${zoom.text}`}>
+                                  {booking.companyName}
+                                </p>
+                                <p className="mt-0.5 inline-block rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                                  {booking.sessionType}
+                                </p>
+                              </>
+                            ) : null}
                             {booking.slotCount > 1 ? (
                               <p className="mt-1 text-[10px] font-medium tabular-nums text-slate-500">
                                 {durationLabel(booking.slotCount)} &middot;{" "}
@@ -531,7 +572,7 @@ export default function ScheduleBoard({
                       className="border-b border-slate-100 bg-slate-100 p-1.5"
                     >
                       <div
-                        className={`flex h-full min-h-[3.25rem] items-center justify-center rounded-lg border border-dashed text-[11px] font-medium ${TONES.closed.card} ${TONES.closed.text}`}
+                        className={`flex h-full ${zoom.row} items-center justify-center rounded-lg border border-dashed ${zoom.text} font-medium ${TONES.closed.card} ${TONES.closed.text}`}
                       >
                         Closed
                       </div>
@@ -544,9 +585,9 @@ export default function ScheduleBoard({
                     <div
                       key={key}
                       style={placement}
-                      className="border-b border-slate-100 bg-slate-50 p-1.5"
+                      className={`border-b border-slate-100 bg-slate-50 ${zoom.padding}`}
                     >
-                      <div className="h-full min-h-[3.25rem] rounded-lg border border-dashed border-slate-200" />
+                      <div className={`h-full ${zoom.row} rounded-lg border border-dashed border-slate-200`} />
                     </div>
                   );
                 }
@@ -571,13 +612,13 @@ export default function ScheduleBoard({
                         event.dataTransfer.getData("text/plain") || movingId;
                       if (bookingId) void move(bookingId, panel.id, slotIndex);
                     }}
-                    className={`border-b border-slate-100 p-1.5 ${past ? "bg-slate-50" : ""}`}
+                    className={`border-b border-slate-100 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
                   >
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => handleEmptyCellClick(panel.id, slotIndex)}
-                      className={`h-full min-h-[3.25rem] w-full rounded-lg border border-dashed text-[11px] transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"}`}
+                      className={`h-full ${zoom.row} w-full rounded-lg border border-dashed ${zoom.text} transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"}`}
                     >
                       {movingId ? "Place here" : "Add"}
                     </button>

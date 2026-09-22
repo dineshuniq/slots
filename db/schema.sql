@@ -296,3 +296,20 @@ begin
   end if;
 end
 $deferrable_overlap$;
+
+-- Mock register ---------------------------------------------------------------
+-- A candidate sits one mock per day. Once it is done they are cleared for every
+-- interview they hold on that date, so "completed" belongs to the pair
+-- (candidate, date) and not to a single booking - hence the unique constraint
+-- rather than a column on bookings. The same candidate booked across three days
+-- has three rows here, one per date, each ticked off on its own.
+create table if not exists mock_completions (
+  id           uuid        primary key default gen_random_uuid(),
+  candidate_id uuid        not null references candidates (id) on delete cascade,
+  mock_date    date        not null,
+  completed_by uuid        references controllers (id),
+  completed_at timestamptz not null default now(),
+  constraint mock_completions_once unique (candidate_id, mock_date)
+);
+
+create index if not exists mock_completions_day_idx on mock_completions (mock_date);

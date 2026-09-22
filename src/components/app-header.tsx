@@ -13,6 +13,7 @@ type Props = {
 
 const CONTROLLER_LINKS = [
   { href: "/schedule", label: "Schedule" },
+  { href: "/mock", label: "Mock" },
   { href: "/book", label: "Book" },
   { href: "/candidates", label: "Candidates" },
   { href: "/audit", label: "Audit Logs" },
