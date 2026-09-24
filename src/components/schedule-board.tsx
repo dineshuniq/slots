@@ -24,6 +24,7 @@ import type {
   ScheduleView,
   WaitingSummary,
 } from "@/lib/types";
+import { chipHue } from "@/lib/chip-hue";
 import { BUTTON, TONES } from "@/lib/tone";
 import { useNow } from "@/lib/use-now";
 import { ZOOM_LEVELS, useZoom } from "@/lib/use-zoom";
@@ -490,6 +491,7 @@ export default function ScheduleBoard({
 
                 if (booking) {
                   const isMoving = movingId === booking.id;
+                  const hue = chipHue(booking.companyName);
                   return (
                     <div
                       key={key}
@@ -519,47 +521,63 @@ export default function ScheduleBoard({
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition ${past ? `cursor-default ${TONES.past.card}` : isMoving ? `cursor-grab border-sky-500 bg-sky-50 ring-2 ring-sky-300 active:cursor-grabbing` : `cursor-grab active:cursor-grabbing ${TONES.booked.card} hover:border-rose-400`}`}
+                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-xl border py-2 pr-2 pl-3.5 shadow-sm transition ${hue.card} ${past ? "cursor-default opacity-60 saturate-50" : isMoving ? "cursor-grab shadow-lg ring-2 ring-sky-400 ring-offset-1 active:cursor-grabbing" : "cursor-grab hover:-translate-y-px hover:shadow-md active:cursor-grabbing"}`}
                       >
+                        {/* Solid rail down the left edge: the company's colour
+                            at full strength, so the chip reads as a block of
+                            booked time even when its body is mostly empty. */}
+                        <span
+                          aria-hidden
+                          className={`absolute inset-y-0 left-0 z-[2] w-1 ${hue.rail}`}
+                        />
+
                         {booking.needsMock && !past ? (
-                          <NeedMock compact label={false} />
+                          <>
+                            <NeedMock compact label={false} />
+                            {/* Fades the chevrons out under the text, so the
+                                words sit on clean colour and the pattern
+                                sweeps in from the right. */}
+                            <span
+                              aria-hidden
+                              className={`pointer-events-none absolute inset-0 z-[1] bg-linear-to-r ${hue.fade}`}
+                            />
+                          </>
                         ) : null}
 
                         <div className="relative z-10 flex items-start gap-1.5">
-                          {/* Name and company sit on a plate of their own, so
-                              they read as type rather than as words lost in the
-                              chevrons behind them. It shrink-wraps, which keeps
-                              the pattern visible either side of it. */}
                           <div className="min-w-0 flex-1">
-                            <div className="inline-block max-w-full rounded-md bg-white/85 px-1.5 py-1 ring-1 ring-slate-900/5">
-                              <button
-                                type="button"
-                                title={`View ${booking.candidateName}'s history`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setHistoryId(booking.candidateId);
-                                }}
-                                className={`block max-w-full cursor-pointer truncate rounded text-left font-extrabold tracking-[0.07em] text-slate-900 uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-slate-400 ${zoom.nameText}`}
-                              >
-                                {booking.candidateName}
-                              </button>
+                            <button
+                              type="button"
+                              title={`View ${booking.candidateName}'s history`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setHistoryId(booking.candidateId);
+                              }}
+                              className={`block max-w-full cursor-pointer truncate rounded text-left font-semibold tracking-[0.04em] uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-current ${hue.name} ${zoom.nameText}`}
+                            >
+                              {booking.candidateName}
+                            </button>
 
-                              {/* Name and company at every zoom - between them
-                                  they say who is sitting and for whom, which is
-                                  the whole point of the chip. Only the session
-                                  type is dropped when the rows are tightest. */}
-                              <p
-                                className={`mt-0.5 truncate font-medium text-slate-500 ${zoom.companyText}`}
+                            {/* Name and company at every zoom - between them
+                                they say who is sitting and for whom, which is
+                                the whole point of the chip. */}
+                            <p
+                              className={`mt-0.5 flex min-w-0 items-center gap-1 font-medium ${hue.company} ${zoom.companyText}`}
+                            >
+                              <svg
+                                aria-hidden
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                                className="h-3 w-3 shrink-0 opacity-70"
                               >
-                                {booking.companyName}
-                              </p>
-                            </div>
-
-                            {zoom.detail ? (
-                              <p className="mt-1 inline-block rounded bg-white/85 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-900/5">
-                                {booking.sessionType}
-                              </p>
-                            ) : null}
+                                <path
+                                  fillRule="evenodd"
+                                  clipRule="evenodd"
+                                  d="M3 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v12h1.5a.5.5 0 0 1 0 1h-10a.5.5 0 0 1 0-1H3V2Zm2 1.5h1.5V5H5V3.5Zm3 0h1.5V5H8V3.5ZM5 6.5h1.5V8H5V6.5Zm3 0h1.5V8H8V6.5ZM5 9.5h1.5V11H5V9.5Zm3 0h1.5V11H8V9.5ZM6.5 12.5H8V14H6.5v-1.5Z"
+                                />
+                              </svg>
+                              <span className="truncate">{booking.companyName}</span>
+                            </p>
                           </div>
                           {past ? null : (
                           <button
@@ -569,12 +587,27 @@ export default function ScheduleBoard({
                               event.stopPropagation();
                               void cancelBooking(booking);
                             }}
-                            className="shrink-0 rounded px-1 text-sm leading-none text-slate-400 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
+                            className="shrink-0 rounded px-1 text-sm leading-none text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
                           >
                             &times;
                           </button>
                           )}
                         </div>
+
+                        {/* Anchored to the bottom, so a long session has
+                            something at both ends instead of a void below the
+                            name. A half-hour chip at the default zoom has no
+                            room for it; the tooltip still carries the type. */}
+                        {zoom.detail &&
+                        (booking.slotCount > 1 || zoom.name === "Large") ? (
+                          <div className="relative z-10 mt-auto pt-1.5">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${hue.pill}`}
+                            >
+                              {booking.sessionType}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
