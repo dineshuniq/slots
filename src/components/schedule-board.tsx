@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import BookingDialog, { type BookingTarget } from "@/components/booking-dialog";
+import BookingDialog, {
+  type BookedSession,
+  type BookingTarget,
+} from "@/components/booking-dialog";
 import CandidateHistory from "@/components/candidate-history";
 import NeedMock from "@/components/need-mock";
 import {
@@ -14,6 +17,7 @@ import {
   sessionRangeLabel,
   slotEndLabel,
   shiftDateKey,
+  slotShortLabel,
   slotStartLabel,
   type CarouselDay,
 } from "@/lib/time";
@@ -46,6 +50,27 @@ const QUICK_DAYS = [
 ];
 
 /**
+ * The last edit that reached the server, kept so it can be taken back.
+ *
+ * Only edits with an exact inverse are kept. Closing a panel reseats the whole
+ * day and may push people to the waiting list, and reopening does not put
+ * them back, so it is not offered as undoable; nor is seating someone from the
+ * queue, since cancelling that booking would not return them to their place.
+ */
+type Change =
+  | {
+      kind: "move";
+      bookingId: string;
+      /** Where it was before, to send it back there. */
+      date: string;
+      panelId: string;
+      slotIndex: number;
+      label: string;
+    }
+  | { kind: "cancel"; booking: Booking; label: string }
+  | { kind: "add"; bookingId: string; label: string };
+
+/**
  * Controller Schedule view: panels across, half-hour slots down.
  *
  * A session can be reassigned either by dragging its chip onto another cell or
@@ -65,6 +90,13 @@ export default function ScheduleBoard({
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Starts locked on every visit, so a stray tap or drag cannot move anyone.
+  // Not remembered between visits on purpose: an edit mode left on is exactly
+  // how the accidental moves happened.
+  const [editing, setEditing] = useState(false);
+  const [lastChange, setLastChange] = useState<Change | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
 
   // Null until hydration, so the server and first client render agree.
   const now = useNow();
@@ -134,6 +166,16 @@ export default function ScheduleBoard({
 
   const move = useCallback(
     async (bookingId: string, toPanelId: string, toSlotIndex: number) => {
+      const before = bookings.find((booking) => booking.id === bookingId);
+      if (
+        before &&
+        before.panelId === toPanelId &&
+        before.slotIndex === toSlotIndex
+      ) {
+        setMovingId(null);
+        return;
+      }
+
       setNotice(null);
       setBusy(true);
       try {
@@ -152,6 +194,16 @@ export default function ScheduleBoard({
           return;
         }
         setMovingId(null);
+        if (before) {
+          setLastChange({
+            kind: "move",
+            bookingId,
+            date: dateKey,
+            panelId: before.panelId,
+            slotIndex: before.slotIndex,
+            label: `Moved ${before.candidateName} to ${toPanelId}, ${slotStartLabel(toSlotIndex)}`,
+          });
+        }
         void refresh();
       } catch {
         setNotice("Could not reach the server. Please try again.");
@@ -160,7 +212,7 @@ export default function ScheduleBoard({
         setDropTarget(null);
       }
     },
-    [dateKey, refresh],
+    [bookings, dateKey, refresh],
   );
 
   async function cancelBooking(booking: Booking) {
@@ -179,7 +231,106 @@ export default function ScheduleBoard({
       return;
     }
     if (movingId === booking.id) setMovingId(null);
+    setLastChange({
+      kind: "cancel",
+      booking,
+      label: `Cancelled ${booking.candidateName}, ${slotStartLabel(booking.slotIndex)} on ${booking.panelId}`,
+    });
     void refresh();
+  }
+
+  /** Locking also drops a half-finished move, so nothing is left armed. */
+  function setEditMode(on: boolean) {
+    setEditing(on);
+    if (!on) {
+      setMovingId(null);
+      setDropTarget(null);
+    }
+  }
+
+  const firstDay = days[0]?.key ?? today;
+  const lastDay = days[days.length - 1]?.key ?? today;
+
+  function stepDay(offset: number) {
+    const next = shiftDateKey(dateKey, offset);
+    if (next < firstDay || next > lastDay) return;
+    setDateKey(next);
+    setMovingId(null);
+  }
+
+  function booked(result: BookedSession | null) {
+    void refresh();
+    if (!result) return;
+    const name =
+      candidates.find((candidate) => candidate.id === result.candidateId)
+        ?.name ?? "Candidate";
+    setLastChange({
+      kind: "add",
+      bookingId: result.id,
+      label: `Booked ${name} on ${result.panelId}, ${slotStartLabel(result.slotIndex)}`,
+    });
+  }
+
+  /** Takes back the last saved edit by applying its exact inverse. */
+  async function undo() {
+    if (!lastChange) return;
+    setNotice(null);
+    setUndoing(true);
+
+    try {
+      let response: Response;
+
+      if (lastChange.kind === "move") {
+        response = await fetch(`/api/bookings/${lastChange.bookingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: lastChange.date,
+            panelId: lastChange.panelId,
+            slotIndex: lastChange.slotIndex,
+          }),
+        });
+      } else if (lastChange.kind === "add") {
+        response = await fetch(`/api/bookings/${lastChange.bookingId}`, {
+          method: "DELETE",
+        });
+      } else {
+        // A cancelled booking cannot be revived, so the same session is booked
+        // again: same candidate, panel, time, length and details.
+        const was = lastChange.booking;
+        response = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateId: was.candidateId,
+            panelId: was.panelId,
+            date: was.slotDate,
+            slotIndex: was.slotIndex,
+            slotCount: was.slotCount,
+            companyName: was.companyName,
+            sessionType: was.sessionType,
+            recruiterPhone: was.recruiterPhone ?? "",
+            recruiterEmail: was.recruiterEmail ?? "",
+          }),
+        });
+      }
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // Kept, so the reason is visible and another try is possible.
+        setNotice(`Could not undo: ${result.error ?? "the server refused it."}`);
+        return;
+      }
+
+      setLastChange(null);
+      setFlash("Change undone.");
+      window.setTimeout(() => setFlash(null), 2500);
+      void refresh();
+    } catch {
+      setNotice("Could not reach the server. Please try again.");
+    } finally {
+      setUndoing(false);
+    }
   }
 
   /**
@@ -303,10 +454,63 @@ export default function ScheduleBoard({
     "--panels": panels.length,
   } as React.CSSProperties;
 
+  const dockVisible = Boolean((editing && movingBooking) || lastChange || flash);
+
+  const stepButton =
+    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg leading-none font-semibold text-slate-700 transition active:bg-slate-100 disabled:opacity-35";
+
   return (
-    <div className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6">
+    <div
+      className={`mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-6 ${
+        dockVisible ? "pb-44 md:pb-28" : ""
+      }`}
+    >
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex w-full gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 sm:w-auto">
+        {/* Phone: one row. A day either way, the date itself, and a way back
+            to today - the three-button strip and its label are too wide. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:hidden">
+          <button
+            type="button"
+            aria-label="Previous day"
+            disabled={dateKey <= firstDay}
+            onClick={() => stepDay(-1)}
+            className={stepButton}
+          >
+            &lsaquo;
+          </button>
+          <input
+            type="date"
+            aria-label="Date"
+            value={dateKey}
+            min={firstDay}
+            max={lastDay}
+            onChange={(event) => {
+              if (event.target.value) setDateKey(event.target.value);
+            }}
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm font-semibold text-slate-800 outline-none focus:border-slate-900"
+          />
+          <button
+            type="button"
+            aria-label="Next day"
+            disabled={dateKey >= lastDay}
+            onClick={() => stepDay(1)}
+            className={stepButton}
+          >
+            &rsaquo;
+          </button>
+          {dateKey !== today ? (
+            <button
+              type="button"
+              onClick={() => setDateKey(today)}
+              className="h-10 shrink-0 rounded-lg px-2 text-sm font-semibold text-indigo-700 active:bg-indigo-50"
+            >
+              Today
+            </button>
+          ) : null}
+        </div>
+
+        {/* Laptop: the three days controllers reach for, and any other. */}
+        <div className="hidden gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 sm:flex">
           {QUICK_DAYS.map((day) => {
             const key = shiftDateKey(today, day.offset);
             const selected = key === dateKey;
@@ -316,7 +520,7 @@ export default function ScheduleBoard({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setDateKey(key)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition sm:flex-none sm:py-1.5 ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
                   selected
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -334,42 +538,80 @@ export default function ScheduleBoard({
           type="date"
           aria-label="Another date"
           value={dateKey}
-          min={days[0]?.key}
-          max={days[days.length - 1]?.key}
+          min={firstDay}
+          max={lastDay}
           onChange={(event) => {
             if (event.target.value) setDateKey(event.target.value);
           }}
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 outline-none focus:border-slate-900 sm:flex-none sm:py-1.5"
+          className="hidden rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-900 sm:block"
         />
 
-        <p className="order-last w-full text-sm text-slate-600 sm:order-none sm:w-auto">
+        <p className="hidden text-sm text-slate-600 sm:block">
           {longDateLabel(dateKey)} &middot; {bookings.length} session
           {bookings.length === 1 ? "" : "s"}
         </p>
 
-        <div className="ml-auto flex items-center gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+        <div className="flex items-center gap-2 sm:ml-auto">
+          {/* The phone has one layout of its own, so zoom is a laptop control. */}
+          <div className="hidden items-center gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 sm:flex">
+            <button
+              type="button"
+              onClick={zoomOut}
+              disabled={!canZoomOut}
+              aria-label="Zoom out"
+              title="Fit more of the day on screen"
+              className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              &minus;
+            </button>
+            <span className="w-16 text-center text-xs font-medium text-slate-600">
+              {ZOOM_LEVELS[level].name}
+            </span>
+            <button
+              type="button"
+              onClick={zoomIn}
+              disabled={!canZoomIn}
+              aria-label="Zoom in"
+              title="Show more of each session"
+              className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Locked by default. Every change - book, move, cancel, close a
+              panel, seat from the queue - needs Edit on first. */}
           <button
             type="button"
-            onClick={zoomOut}
-            disabled={!canZoomOut}
-            aria-label="Zoom out"
-            title="Fit more of the day on screen"
-            className="rounded-lg px-3 py-2 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:px-2.5 sm:py-1"
+            onClick={() => setEditMode(!editing)}
+            aria-pressed={editing}
+            className={`flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition sm:h-auto sm:py-1.5 ${
+              editing
+                ? "bg-amber-400 text-amber-950 shadow-sm hover:bg-amber-300"
+                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+            }`}
           >
-            &minus;
-          </button>
-          <span className="w-16 text-center text-xs font-medium text-slate-600">
-            {ZOOM_LEVELS[level].name}
-          </span>
-          <button
-            type="button"
-            onClick={zoomIn}
-            disabled={!canZoomIn}
-            aria-label="Zoom in"
-            title="Show more of each session"
-            className="rounded-lg px-3 py-2 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:px-2.5 sm:py-1"
-          >
-            +
+            {editing ? (
+              <>
+                <span
+                  aria-hidden
+                  className="h-2 w-2 animate-pulse rounded-full bg-amber-900"
+                />
+                Done
+              </>
+            ) : (
+              <>
+                <svg
+                  aria-hidden
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="h-4 w-4"
+                >
+                  <path d="M13.6 2.9a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8l-9.4 9.4-3.9 1.1a.6.6 0 0 1-.7-.7l1.1-3.9 9.4-9.4Z" />
+                </svg>
+                Edit
+              </>
+            )}
           </button>
         </div>
       </header>
@@ -377,7 +619,7 @@ export default function ScheduleBoard({
       {error ? (
         <p
           role="alert"
-          className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 sm:mt-4"
         >
           {error}
         </p>
@@ -386,7 +628,7 @@ export default function ScheduleBoard({
       {notice ? (
         <p
           role="alert"
-          className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"
+          className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mt-4"
         >
           {notice}
         </p>
@@ -399,72 +641,61 @@ export default function ScheduleBoard({
         />
       ) : null}
 
-      {movingBooking ? (
-        <div className="sticky top-16 z-40 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm text-sky-900 shadow-sm">
-          <span>
-            Moving <strong>{movingBooking.candidateName}</strong> (
-            {movingBooking.companyName}). Choose an empty slot to place it.
-          </span>
-          <button
-            type="button"
-            onClick={() => setMovingId(null)}
-            className="ml-auto rounded-lg border border-sky-300 px-2.5 py-1 text-xs font-medium transition hover:bg-sky-100"
-          >
-            Cancel move
-          </button>
-        </div>
-      ) : null}
-
-      <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* On a phone: the screen less the header, toolbar and tab bar (about
-            17.5rem between them), so the grid ends above the tab bar. */}
-        <div
-          className="thin-scroll max-h-[calc(100dvh-17.5rem)] min-h-64 snap-x snap-mandatory overflow-auto overscroll-x-contain sm:max-h-[72vh] sm:snap-none"
-          // A snapped panel lands beside the sticky time column, not under it.
-          style={{ scrollPaddingLeft: zoom.timeColumn }}
-        >
+      <section
+        className={`mt-3 overflow-hidden rounded-2xl border bg-white shadow-sm transition sm:mt-4 ${
+          editing ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200"
+        }`}
+      >
+        {/* On a phone: the screen less the header, the toolbar and the tab
+            bar (about 12.5rem between them), so the grid ends above the tab
+            bar and the page itself barely scrolls. */}
+        <div className="thin-scroll max-h-[calc(100dvh-12.5rem)] min-h-64 overflow-auto overscroll-contain sm:max-h-[72vh]">
           <div
-            className={`schedule-grid grid min-w-max ${zoom.detail ? "schedule-grid-fill" : ""}`}
+            className="schedule-grid grid w-full sm:w-auto sm:min-w-max"
             style={gridSizing}
           >
             <div
               style={{ gridColumn: 1, gridRow: 1 }}
-              className="sticky top-0 left-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold tracking-wider text-slate-500 uppercase"
+              className="sticky top-0 left-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-1 py-2 text-xs font-semibold tracking-wider text-slate-500 uppercase sm:px-3 sm:py-3"
             >
-              Time
+              <span className="max-sm:hidden">Time</span>
             </div>
             {panels.map((panel, column) => (
               <div
                 key={panel.id}
                 style={{ gridColumn: column + 2, gridRow: 1 }}
-                className="sticky top-0 z-20 snap-start border-b border-slate-200 bg-slate-50 px-3 py-3 text-center"
+                className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-1 py-2 text-center sm:px-3 sm:py-3"
               >
-                <p className="text-sm font-bold tracking-tight text-slate-900">
+                <p className="truncate text-xs font-bold tracking-tight text-slate-900 sm:text-sm">
                   {panel.label}
                 </p>
                 {closedPanelIds.has(panel.id) ? (
                   <p
-                    className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${TONES.closed.chip}`}
+                    className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px] ${TONES.closed.chip}`}
                   >
                     Closed
                   </p>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-[10px] text-slate-500 sm:text-xs">
                     {countsByPanel.get(panel.id) ?? 0} booked
                   </p>
                 )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setClosed(panel.id, !closedPanelIds.has(panel.id))}
-                  className={`mt-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 sm:px-2 sm:py-0.5 sm:text-[11px] ${
-                    closedPanelIds.has(panel.id)
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {closedPanelIds.has(panel.id) ? "Reopen" : "Close day"}
-                </button>
+                {editing ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      setClosed(panel.id, !closedPanelIds.has(panel.id))
+                    }
+                    className={`mt-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:opacity-50 sm:py-0.5 ${
+                      closedPanelIds.has(panel.id)
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {closedPanelIds.has(panel.id) ? "Reopen" : "Close day"}
+                  </button>
+                ) : null}
               </div>
             ))}
 
@@ -472,18 +703,30 @@ export default function ScheduleBoard({
               <div
                 key={`time-${slotIndex}`}
                 style={{ gridColumn: 1, gridRow: slotIndex + 2 }}
-                className={`sticky left-0 z-10 border-r border-b border-slate-100 px-2 text-right ${zoom.detail ? "py-2" : "py-0.5"} ${slotIsPast(slotIndex) ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"}`}
+                className={`sticky left-0 z-10 border-r border-b border-slate-100 px-1 py-1 text-right sm:px-2 ${zoom.detail ? "sm:py-2" : "sm:py-0.5"} ${slotIsPast(slotIndex) ? "bg-slate-50 text-slate-400" : "bg-white text-slate-600"}`}
               >
+                {/* Phone: a ruler - the hour, then ":30". */}
                 <p
-                  className={`font-semibold tabular-nums ${zoom.detail ? "text-xs" : zoom.text}`}
+                  className={`tabular-nums sm:hidden ${
+                    slotIndex % 2 === 0
+                      ? "text-[11px] font-semibold"
+                      : "text-[10px] opacity-60"
+                  }`}
                 >
-                  {slotStartLabel(slotIndex)}
+                  {slotShortLabel(slotIndex)}
                 </p>
-                {zoom.detail ? (
-                  <p className="text-[10px] tabular-nums opacity-70">
-                    {slotEndLabel(slotIndex)}
+                <div className="max-sm:hidden">
+                  <p
+                    className={`font-semibold tabular-nums ${zoom.detail ? "text-xs" : zoom.text}`}
+                  >
+                    {slotStartLabel(slotIndex)}
                   </p>
-                ) : null}
+                  {zoom.detail ? (
+                    <p className="text-[10px] tabular-nums opacity-70">
+                      {slotEndLabel(slotIndex)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ))}
 
@@ -507,36 +750,49 @@ export default function ScheduleBoard({
                 if (booking) {
                   const isMoving = movingId === booking.id;
                   const hue = chipHue(booking.companyName);
+                  // Locked, a tap only looks: it opens the history. Editing,
+                  // it picks the session up to move.
+                  const activate = () => {
+                    if (!editing || past) {
+                      setHistoryId(booking.candidateId);
+                      return;
+                    }
+                    setMovingId(isMoving ? null : booking.id);
+                  };
                   return (
                     <div
                       key={key}
                       style={placement}
-                      className={`border-b border-slate-100 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
+                      className={`border-b border-slate-100 max-sm:p-0.5 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
                     >
                       <div
-                        draggable={!busy && !past}
+                        draggable={editing && !busy && !past}
                         onDragStart={(event) => {
                           event.dataTransfer.setData("text/plain", booking.id);
                           event.dataTransfer.effectAllowed = "move";
                           setMovingId(booking.id);
                         }}
                         onDragEnd={() => setDropTarget(null)}
-                        onClick={() => {
-                          if (past) return;
-                          setMovingId(isMoving ? null : booking.id);
-                        }}
-                        role={past ? undefined : "button"}
-                        tabIndex={past ? undefined : 0}
+                        onClick={activate}
+                        role="button"
+                        tabIndex={0}
                         onKeyDown={(event) => {
-                          if (past) return;
                           if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            setMovingId(isMoving ? null : booking.id);
+                            activate();
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-xl border py-1.5 pr-2 pl-3.5 shadow-sm transition ${hue.card} ${past ? "cursor-default opacity-60 saturate-50" : isMoving ? "cursor-grab shadow-lg ring-2 ring-sky-400 ring-offset-1 active:cursor-grabbing" : "cursor-grab hover:-translate-y-px hover:shadow-md active:cursor-grabbing"}`}
+                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-lg border py-1 pr-1 pl-2.5 shadow-sm transition sm:rounded-xl sm:py-1.5 sm:pr-2 sm:pl-3.5 ${hue.card} ${
+                          past
+                            ? "cursor-pointer opacity-60 saturate-50"
+                            : isMoving
+                              ? "cursor-grab shadow-lg ring-2 ring-sky-400 ring-offset-1 active:cursor-grabbing"
+                              : editing
+                                ? "cursor-grab hover:-translate-y-px hover:shadow-md active:cursor-grabbing"
+                                : "cursor-pointer hover:shadow-md"
+                        }`}
                       >
                         {/* Solid rail down the left edge: the company's colour
                             at full strength, so the chip reads as a block of
@@ -559,11 +815,26 @@ export default function ScheduleBoard({
                           </>
                         ) : null}
 
-                        {/* Line one: who, and what kind of session. The
-                            name gives way first when space runs out, so the
-                            session type is never the part that gets cut. */}
+                        {/* Phone: who, and for whom - nothing else fits a
+                            column a third of the screen wide, and nothing
+                            else is needed to find someone. */}
+                        <p
+                          className={`relative z-10 line-clamp-2 text-[11px] leading-tight break-words sm:hidden ${hue.name}`}
+                        >
+                          <span className="font-semibold tracking-[0.02em] uppercase">
+                            {booking.candidateName}
+                          </span>
+                          <span className={hue.company}>
+                            {" "}
+                            &ndash; {booking.companyName}
+                          </span>
+                        </p>
+
+                        {/* Laptop, line one: who, and what kind of session.
+                            The name gives way first when space runs out, so
+                            the session type is never the part that gets cut. */}
                         <div
-                          className={`relative z-10 flex items-start gap-1.5 ${zoom.nameText}`}
+                          className={`relative z-10 flex items-start gap-1.5 max-sm:hidden ${zoom.nameText}`}
                         >
                           <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
                             <button
@@ -590,7 +861,7 @@ export default function ScheduleBoard({
                             ) : null}
                           </div>
 
-                          {past ? null : (
+                          {editing && !past ? (
                             <button
                               type="button"
                               aria-label={`Cancel booking for ${booking.candidateName}`}
@@ -602,16 +873,16 @@ export default function ScheduleBoard({
                             >
                               &times;
                             </button>
-                          )}
+                          ) : null}
                         </div>
 
-                        {/* Line two: the company, as the display line. Sized
-                            per zoom to fill what the name leaves of a
+                        {/* Laptop, line two: the company, as the display line.
+                            Sized per zoom to fill what the name leaves of a
                             half-hour chip; uppercase has no descenders, so it
                             can sit on a line height of 1. A longer session has
                             room to wrap rather than cut the name off. */}
                         <p
-                          className={`relative z-10 mt-1 font-bold tracking-[0.02em] uppercase ${hue.company} ${zoom.companyText} ${
+                          className={`relative z-10 mt-1 font-bold tracking-[0.02em] uppercase max-sm:hidden ${hue.company} ${zoom.companyText} ${
                             booking.slotCount > 1
                               ? "line-clamp-3 leading-[1.05] break-words"
                               : "truncate leading-none"
@@ -629,10 +900,10 @@ export default function ScheduleBoard({
                     <div
                       key={key}
                       style={placement}
-                      className="border-b border-slate-100 bg-slate-100 p-1.5"
+                      className="border-b border-slate-100 bg-slate-100 p-0.5 sm:p-1.5"
                     >
                       <div
-                        className={`flex h-full ${zoom.row} items-center justify-center rounded-lg border border-dashed ${zoom.text} font-medium ${TONES.closed.card} ${TONES.closed.text}`}
+                        className={`flex h-full max-sm:min-h-10 ${zoom.row} items-center justify-center rounded-lg border border-dashed max-sm:text-[10px] ${zoom.text} font-medium ${TONES.closed.card} ${TONES.closed.text}`}
                       >
                         Closed
                       </div>
@@ -640,14 +911,18 @@ export default function ScheduleBoard({
                   );
                 }
 
-                if (past) {
+                if (past || !editing) {
+                  // Nothing to do here: a past slot is history, and a locked
+                  // grid takes no bookings. Drawn, but not a button.
                   return (
                     <div
                       key={key}
                       style={placement}
-                      className={`border-b border-slate-100 bg-slate-50 ${zoom.padding}`}
+                      className={`border-b border-slate-100 max-sm:p-0.5 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
                     >
-                      <div className={`h-full ${zoom.row} rounded-lg border border-dashed border-slate-200`} />
+                      <div
+                        className={`h-full max-sm:min-h-10 ${zoom.row} rounded-lg border border-dashed ${past ? "border-slate-200" : "border-slate-200/70"}`}
+                      />
                     </div>
                   );
                 }
@@ -672,13 +947,13 @@ export default function ScheduleBoard({
                         event.dataTransfer.getData("text/plain") || movingId;
                       if (bookingId) void move(bookingId, panel.id, slotIndex);
                     }}
-                    className={`border-b border-slate-100 ${zoom.padding} ${past ? "bg-slate-50" : ""}`}
+                    className={`border-b border-slate-100 max-sm:p-0.5 ${zoom.padding}`}
                   >
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => handleEmptyCellClick(panel.id, slotIndex)}
-                      className={`h-full ${zoom.row} w-full rounded-lg border border-dashed ${zoom.text} transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 pointer-coarse:text-slate-300 active:border-emerald-400 active:bg-emerald-50 active:text-emerald-700"}`}
+                      className={`h-full max-sm:min-h-10 ${zoom.row} w-full rounded-lg border border-dashed max-sm:text-[10px] ${zoom.text} transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 pointer-coarse:text-slate-300 active:border-emerald-400 active:bg-emerald-50 active:text-emerald-700"}`}
                     >
                       {movingId ? "Place here" : "Add"}
                     </button>
@@ -731,14 +1006,16 @@ export default function ScheduleBoard({
                     </span>
                   ) : null}
                 </span>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => placeFromQueue(entry)}
-                  className={`shrink-0 ${BUTTON.book}`}
-                >
-                  Place
-                </button>
+                {editing ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => placeFromQueue(entry)}
+                    className={`shrink-0 ${BUTTON.book}`}
+                  >
+                    Place
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -746,22 +1023,111 @@ export default function ScheduleBoard({
       ) : null}
 
       <p className="mt-3 text-xs text-slate-500">
-        {loading && !data
-          ? "Loading schedule..."
-          : (
-            <>
-              <span className="pointer-coarse:hidden">
-                Drag a session onto another panel or time, or click it and then
-                click its destination.
-              </span>
-              <span className="hidden pointer-coarse:inline">
-                Tap a session, then tap where it should go. Swipe sideways for
-                the other panels.
-              </span>{" "}
-              Updates every few seconds.
-            </>
-          )}
+        {loading && !data ? (
+          "Loading schedule..."
+        ) : editing ? (
+          <>
+            <span className="pointer-coarse:hidden">
+              Drag a session to another panel or time, or click it and then an
+              empty slot. Click an empty slot to book.
+            </span>
+            <span className="hidden pointer-coarse:inline">
+              Tap a session, then an empty slot to move it. Tap an empty slot
+              to book.
+            </span>{" "}
+            Tap Done when finished.
+          </>
+        ) : (
+          <>
+            View only &mdash;{" "}
+            <span className="pointer-coarse:hidden">click</span>
+            <span className="hidden pointer-coarse:inline">tap</span> a
+            session for the candidate&apos;s history. Turn on Edit to book,
+            move or cancel.
+          </>
+        )}{" "}
+        Updates every few seconds.
       </p>
+
+      {/* The dock: what is armed, and what can be taken back. Above the tab
+          bar on a phone, bottom-centre on a laptop - where the eye already is
+          after a tap, and never pushing the grid down. */}
+      {dockVisible ? (
+        <div className="no-print fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-lg flex-col gap-2 md:bottom-6">
+          {editing && movingBooking ? (
+            <div
+              role="status"
+              className="rounded-2xl bg-sky-600 px-4 py-3 text-sm text-white shadow-xl"
+            >
+              <p className="truncate font-semibold">
+                Moving {movingBooking.candidateName}
+                <span className="font-normal text-sky-100">
+                  {" "}
+                  &middot; {movingBooking.companyName}
+                </span>
+              </p>
+              <p className="text-xs text-sky-100">
+                Choose an empty slot for it.
+              </p>
+              <div className="mt-2.5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void cancelBooking(movingBooking)}
+                  className="rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold transition hover:bg-white/25 active:bg-white/25"
+                >
+                  Cancel booking
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryId(movingBooking.candidateId)}
+                  className="rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold transition hover:bg-white/25 active:bg-white/25"
+                >
+                  History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMovingId(null)}
+                  className="ml-auto rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-sky-700 transition active:bg-sky-50"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {lastChange ? (
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-2xl bg-slate-900 py-2 pr-2 pl-4 text-sm text-white shadow-xl"
+            >
+              <p className="min-w-0 flex-1 truncate">{lastChange.label}</p>
+              <button
+                type="button"
+                onClick={undo}
+                disabled={undoing}
+                className="shrink-0 rounded-lg px-3 py-2 text-sm font-bold text-amber-300 transition hover:bg-white/10 active:bg-white/10 disabled:opacity-60"
+              >
+                {undoing ? "Undoing..." : "Undo"}
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setLastChange(null)}
+                className="shrink-0 rounded-lg px-2.5 py-2 leading-none text-slate-400 transition hover:bg-white/10 active:bg-white/10"
+              >
+                &times;
+              </button>
+            </div>
+          ) : flash ? (
+            <p
+              role="status"
+              className="rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl"
+            >
+              {flash}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {target ? (
         <BookingDialog
@@ -774,7 +1140,7 @@ export default function ScheduleBoard({
             panelsFreeFor(target.slotIndex, count)
           }
           onClose={() => setTarget(null)}
-          onBooked={refresh}
+          onBooked={booked}
         />
       ) : null}
     </div>

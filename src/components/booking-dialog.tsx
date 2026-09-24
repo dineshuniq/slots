@@ -20,6 +20,15 @@ import {
   type SessionType,
 } from "@/lib/types";
 
+/** What was just booked, so the caller can offer to take it back. */
+export type BookedSession = {
+  id: string;
+  panelId: string;
+  slotIndex: number;
+  slotCount: number;
+  candidateId: string;
+};
+
 export type BookingTarget = {
   dateKey: string;
   slotIndex: number;
@@ -37,7 +46,8 @@ type Props = {
   panels: Panel[];
   candidates: CandidateSummary[];
   onClose: () => void;
-  onBooked: () => void;
+  /** Null when the request joined the waiting list rather than booking. */
+  onBooked: (booked: BookedSession | null) => void;
   /**
    * Supplied when the length may be changed here: returns the panels free for
    * a whole session of that many blocks, so switching to 2 hours re-checks
@@ -154,7 +164,17 @@ export default function BookingDialog({
         return;
       }
 
-      onBooked();
+      onBooked(
+        waitlisting || typeof result.id !== "string"
+          ? null
+          : {
+              id: result.id,
+              panelId: result.panelId,
+              slotIndex: target.slotIndex,
+              slotCount,
+              candidateId,
+            },
+      );
       onClose();
     } catch {
       setError("Could not reach the server. Please try again.");

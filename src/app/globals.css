@@ -52,18 +52,18 @@ body {
     repeat(var(--panels), minmax(var(--panel-col), 1fr));
 }
 
-/* On a phone at the roomier zooms, one panel fills the screen beside the time
-   column and the rest are a swipe away, each snapping into place. The width
-   is the viewport less the page gutters (0.75rem a side), the card border and
-   the time column. Compact keeps its narrow columns, so two fit side by side. */
+/* On a phone every panel is on screen at once: a narrow ruler of times, then
+   the panels sharing what is left. A chip there is one or two lines of
+   "NAME - Company", so a third of a phone is enough for it. With more panels
+   than fit at 5rem, the grid scrolls sideways instead of crushing them.
+   5rem is what lets three panels fit a 320px phone: 320 less 1.5rem of
+   gutter, 2px of border and the 2.75rem ruler leaves 250px, and 3 x 80 = 240.
+   Zoom is a laptop control and does not apply here. */
 @media (max-width: 639.98px) {
-  .schedule-grid-fill {
+  .schedule-grid {
     grid-template-columns:
-      var(--time-col)
-      repeat(
-        var(--panels),
-        max(var(--panel-col), calc(100vw - 1.5rem - 2px - var(--time-col)))
-      );
+      2.75rem
+      repeat(var(--panels), minmax(5rem, 1fr));
   }
 }
 

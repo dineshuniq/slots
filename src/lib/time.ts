@@ -114,6 +114,18 @@ export function slotEndLabel(index: number): string {
   return minutesToLabel(slotStartMinutes(index) + SLOT_MINUTES);
 }
 
+/**
+ * For a time column only a few characters wide: "7 AM" on the hour and ":30"
+ * on the half hour, which reads as a ruler rather than a list of times.
+ */
+export function slotShortLabel(index: number): string {
+  const minutes = slotStartMinutes(index);
+  const past = minutes % 60;
+  if (past !== 0) return `:${String(past).padStart(2, "0")}`;
+  const hour = Math.floor(minutes / 60);
+  return `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? "AM" : "PM"}`;
+}
+
 /** "7:00 AM - 7:30 AM" */
 export function slotRangeLabel(index: number): string {
   return `${slotStartLabel(index)} \u2013 ${slotEndLabel(index)}`;
