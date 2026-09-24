@@ -71,7 +71,7 @@ export default function PasswordDialog({ onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="password-dialog-title"
-        className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl"
+        className="thin-scroll max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:rounded-2xl sm:p-6"
       >
         <h2
           id="password-dialog-title"

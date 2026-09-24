@@ -139,7 +139,7 @@ export default function MockBoard({ days, today }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -223,7 +223,7 @@ export default function MockBoard({ days, today }: Props) {
               return (
                 <li
                   key={entry.candidateId}
-                  className={`flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3 transition ${
+                  className={`flex flex-wrap items-start gap-x-3 gap-y-2 px-3 py-3 transition sm:gap-x-4 sm:px-4 ${
                     completed ? "bg-slate-50" : "hover:bg-slate-50"
                   }`}
                 >
@@ -292,7 +292,7 @@ export default function MockBoard({ days, today }: Props) {
                     onClick={() => setCompleted(entry, !completed)}
                     disabled={busy}
                     aria-pressed={completed}
-                    className={`no-print shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`no-print shrink-0 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:py-1.5 ${
                       completed
                         ? "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
                         : "bg-emerald-600 text-white hover:bg-emerald-700"

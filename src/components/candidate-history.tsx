@@ -57,9 +57,9 @@ export default function CandidateHistory({ candidateId, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="candidate-history-title"
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-3xl flex-col rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl sm:max-h-[85vh] sm:rounded-2xl sm:pb-0"
       >
-        <header className="flex items-start gap-3 border-b border-slate-200 px-6 py-4">
+        <header className="flex items-start gap-3 border-b border-slate-200 px-4 py-4 sm:px-6">
           <div className="min-w-0 flex-1">
             <h2
               id="candidate-history-title"
@@ -103,13 +103,13 @@ export default function CandidateHistory({ candidateId, onClose }: Props) {
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-1 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-base leading-none font-medium text-slate-600 transition hover:bg-slate-100 sm:px-2.5 sm:py-1 sm:text-sm"
           >
             &times;
           </button>
         </header>
 
-        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
           {error ? (
             <p
               role="alert"
@@ -126,93 +126,171 @@ export default function CandidateHistory({ candidateId, onClose }: Props) {
               No sessions booked yet.
             </p>
           ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 text-xs tracking-wider text-slate-500 uppercase">
-                <tr>
-                  <th className="pb-2 font-semibold">Date</th>
-                  <th className="pb-2 font-semibold">Time</th>
-                  <th className="pb-2 font-semibold">Panel</th>
-                  <th className="pb-2 font-semibold">Company</th>
-                  <th className="pb-2 font-semibold">Recruiter</th>
-                  <th className="pb-2 font-semibold">Type</th>
-                  <th className="pb-2 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Phone: one card per session. Seven columns do not fit. */}
+              <ul className="space-y-2 sm:hidden">
                 {data.sessions.map((session) => {
                   const cancelled = session.status === "cancelled";
                   return (
-                    <tr
+                    <li
                       key={session.id}
-                      className={`border-b border-slate-100 last:border-0 ${
-                        cancelled ? "text-slate-400" : ""
+                      className={`rounded-xl border border-slate-200 p-3 text-sm ${
+                        cancelled ? "bg-slate-50 text-slate-400" : "bg-white"
                       }`}
                     >
-                      <td className="py-2.5 whitespace-nowrap">
-                        {longDateLabel(session.slotDate)}
-                        {mockSet.has(session.slotDate) ? (
-                          <span className="ml-1.5 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-semibold text-emerald-700">
-                            mock done
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2.5 whitespace-nowrap tabular-nums">
-                        {sessionRangeLabel(session.slotIndex, session.slotCount)}
-                        {session.slotCount > 1 ? (
-                          <span className="ml-1 text-xs text-slate-500">
-                            ({durationLabel(session.slotCount)})
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2.5 font-medium">{session.panelId}</td>
-                      <td className="py-2.5">{session.companyName}</td>
-                      <td className="py-2.5">
-                        {session.recruiterPhone || session.recruiterEmail ? (
-                          <span className="flex flex-col leading-tight">
-                            {session.recruiterPhone ? (
-                              <a
-                                href={`tel:${session.recruiterPhone}`}
-                                className="tabular-nums underline decoration-slate-300 underline-offset-2 hover:decoration-current"
-                              >
-                                {session.recruiterPhone}
-                              </a>
-                            ) : null}
-                            {session.recruiterEmail ? (
-                              <a
-                                href={`mailto:${session.recruiterEmail}`}
-                                className="truncate underline decoration-slate-300 underline-offset-2 hover:decoration-current"
-                              >
-                                {session.recruiterEmail}
-                              </a>
-                            ) : null}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="py-2.5">{session.sessionType}</td>
-                      <td className="py-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold">
+                          {longDateLabel(session.slotDate)}
+                        </p>
                         <span
-                          className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${
                             cancelled ? TONES.past.chip : TONES.own.chip
                           }`}
                         >
                           {cancelled ? "Cancelled" : "Booked"}
                         </span>
-                      </td>
-                    </tr>
+                      </div>
+
+                      <p className="mt-1 tabular-nums">
+                        {sessionRangeLabel(
+                          session.slotIndex,
+                          session.slotCount,
+                        )}
+                        {session.slotCount > 1
+                          ? ` (${durationLabel(session.slotCount)})`
+                          : ""}{" "}
+                        &middot;{" "}
+                        <span className="font-medium">{session.panelId}</span>
+                      </p>
+
+                      <p className={cancelled ? "" : "text-slate-600"}>
+                        {session.companyName} &middot; {session.sessionType}
+                        {mockSet.has(session.slotDate) ? (
+                          <span className="ml-1.5 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            mock done
+                          </span>
+                        ) : null}
+                      </p>
+
+                      {session.recruiterPhone || session.recruiterEmail ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {session.recruiterPhone ? (
+                            <a
+                              href={`tel:${session.recruiterPhone}`}
+                              className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 tabular-nums"
+                            >
+                              {session.recruiterPhone}
+                            </a>
+                          ) : null}
+                          {session.recruiterEmail ? (
+                            <a
+                              href={`mailto:${session.recruiterEmail}`}
+                              className="max-w-full truncate rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700"
+                            >
+                              {session.recruiterEmail}
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
+              </ul>
+
+              <table className="hidden w-full text-left text-sm sm:table">
+                <thead className="border-b border-slate-200 text-xs tracking-wider text-slate-500 uppercase">
+                  <tr>
+                    <th className="pb-2 font-semibold">Date</th>
+                    <th className="pb-2 font-semibold">Time</th>
+                    <th className="pb-2 font-semibold">Panel</th>
+                    <th className="pb-2 font-semibold">Company</th>
+                    <th className="pb-2 font-semibold">Recruiter</th>
+                    <th className="pb-2 font-semibold">Type</th>
+                    <th className="pb-2 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.sessions.map((session) => {
+                    const cancelled = session.status === "cancelled";
+                    return (
+                      <tr
+                        key={session.id}
+                        className={`border-b border-slate-100 last:border-0 ${
+                          cancelled ? "text-slate-400" : ""
+                        }`}
+                      >
+                        <td className="py-2.5 whitespace-nowrap">
+                          {longDateLabel(session.slotDate)}
+                          {mockSet.has(session.slotDate) ? (
+                            <span className="ml-1.5 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              mock done
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-2.5 whitespace-nowrap tabular-nums">
+                          {sessionRangeLabel(
+                            session.slotIndex,
+                            session.slotCount,
+                          )}
+                          {session.slotCount > 1 ? (
+                            <span className="ml-1 text-xs text-slate-500">
+                              ({durationLabel(session.slotCount)})
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-2.5 font-medium">
+                          {session.panelId}
+                        </td>
+                        <td className="py-2.5">{session.companyName}</td>
+                        <td className="py-2.5">
+                          {session.recruiterPhone || session.recruiterEmail ? (
+                            <span className="flex flex-col leading-tight">
+                              {session.recruiterPhone ? (
+                                <a
+                                  href={`tel:${session.recruiterPhone}`}
+                                  className="tabular-nums underline decoration-slate-300 underline-offset-2 hover:decoration-current"
+                                >
+                                  {session.recruiterPhone}
+                                </a>
+                              ) : null}
+                              {session.recruiterEmail ? (
+                                <a
+                                  href={`mailto:${session.recruiterEmail}`}
+                                  className="truncate underline decoration-slate-300 underline-offset-2 hover:decoration-current"
+                                >
+                                  {session.recruiterEmail}
+                                </a>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">&mdash;</span>
+                          )}
+                        </td>
+                        <td className="py-2.5">{session.sessionType}</td>
+                        <td className="py-2.5">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                              cancelled ? TONES.past.chip : TONES.own.chip
+                            }`}
+                          >
+                            {cancelled ? "Cancelled" : "Booked"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
 
         {data ? (
-          <footer className="border-t border-slate-200 px-6 py-3 text-xs text-slate-500">
+          <footer className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:px-6">
             {data.candidate.bookingCount} active session
             {data.candidate.bookingCount === 1 ? "" : "s"} &middot;{" "}
-            {data.sessions.length} in total &middot; {data.mockDates.length} mock
+            {data.sessions.length} in total &middot; {data.mockDates.length}{" "}
+            mock
             {data.mockDates.length === 1 ? "" : "s"} completed
           </footer>
         ) : null}

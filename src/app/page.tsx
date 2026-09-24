@@ -11,9 +11,9 @@ export default async function HomePage() {
   if (session?.role === "controller") redirect("/schedule");
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <main className="flex min-h-dvh items-center justify-center bg-slate-100 px-5 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
+        <div className="mb-6 text-center sm:mb-8">
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
             Panel Slots
           </h1>

@@ -56,7 +56,7 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div
         role="tablist"
         aria-label="Sign in as"
@@ -69,7 +69,7 @@ export default function LoginForm() {
             type="button"
             aria-selected={mode === value}
             onClick={() => switchMode(value)}
-            className={`rounded-lg px-3 py-2 text-sm font-medium capitalize transition ${
+            className={`rounded-lg px-3 py-2.5 text-sm font-medium capitalize transition sm:py-2 ${
               mode === value
                 ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
@@ -104,6 +104,9 @@ export default function LoginForm() {
               autoComplete="one-time-code"
               autoFocus
               spellCheck={false}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              enterKeyHint="go"
               inputMode="text"
               maxLength={TOKEN_LENGTH}
               placeholder="ABCD"
@@ -130,8 +133,11 @@ export default function LoginForm() {
                 autoComplete="username"
                 autoFocus
                 spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                enterKeyHint="next"
                 placeholder="e.g. dinesh"
-                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:py-2.5"
               />
             </div>
 
@@ -149,7 +155,8 @@ export default function LoginForm() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
-                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                enterKeyHint="go"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:py-2.5"
               />
             </div>
           </>
@@ -167,7 +174,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:py-2.5 sm:text-sm"
         >
           {busy ? "Signing in..." : "Sign in"}
         </button>

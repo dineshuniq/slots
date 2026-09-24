@@ -73,7 +73,7 @@ export default function AuditBoard() {
     "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -84,16 +84,16 @@ export default function AuditBoard() {
           </p>
         </div>
 
-        <div className="no-print flex gap-2">
+        <div className="no-print flex w-full gap-2 sm:w-auto">
           <a
             href={`/api/audit/export?format=csv${query ? `&${query}` : ""}`}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-100 sm:flex-none sm:py-2"
           >
             Download CSV
           </a>
           <a
             href={`/api/audit/export?format=xlsx${query ? `&${query}` : ""}`}
-            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            className="flex-1 rounded-lg bg-emerald-600 px-3 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-emerald-700 sm:flex-none sm:py-2"
           >
             Download Excel
           </a>
@@ -101,7 +101,7 @@ export default function AuditBoard() {
       </header>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
             From
             <input
@@ -154,7 +154,7 @@ export default function AuditBoard() {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+          <label className="col-span-2 flex flex-col gap-1.5 text-sm font-medium text-slate-700 lg:col-span-1">
             Search
             <input
               type="search"
@@ -178,7 +178,7 @@ export default function AuditBoard() {
             <button
               type="button"
               onClick={clearFilters}
-              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 sm:px-2.5 sm:py-1"
             >
               Clear filters
             </button>
@@ -186,7 +186,7 @@ export default function AuditBoard() {
           <button
             type="button"
             onClick={refresh}
-            className="ml-auto rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+            className="ml-auto rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 sm:px-2.5 sm:py-1"
           >
             Refresh
           </button>
@@ -223,7 +223,7 @@ export default function AuditBoard() {
                 key={entry.id}
                 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 text-sm hover:bg-slate-50"
               >
-                <span className="w-40 shrink-0 tabular-nums text-slate-500">
+                <span className="shrink-0 text-xs tabular-nums text-slate-500 sm:w-40 sm:text-sm">
                   {formatWhen(entry.occurredAt)}
                 </span>
 
@@ -239,7 +239,7 @@ export default function AuditBoard() {
                   {entry.actionLabel}
                 </span>
 
-                <span className="min-w-0 flex-1 text-slate-900">
+                <span className="w-full text-slate-900 sm:w-auto sm:min-w-0 sm:flex-1">
                   {entry.summary}
                 </span>
               </li>

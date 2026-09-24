@@ -187,7 +187,7 @@ export default function BookingBoard({
   ).length;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
           Book a slot
@@ -217,7 +217,7 @@ export default function BookingBoard({
             Pick a start time - session length is chosen when you book.
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-start gap-1 sm:items-end">
           <SlotLegend showOwn={role === "candidate"} />
           <p className="text-xs text-slate-500">
             <span className="mr-1 inline-block rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-950 uppercase">

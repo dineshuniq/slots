@@ -295,12 +295,18 @@ export default function ScheduleBoard({
     return counts;
   }, [bookings]);
 
-  const gridTemplateColumns = `${zoom.timeColumn} repeat(${panels.length}, minmax(${zoom.column}, 1fr))`;
+  // Read by .schedule-grid in globals.css, which sizes the columns - a
+  // phone overrides the sizing there, which an inline template could not allow.
+  const gridSizing = {
+    "--time-col": zoom.timeColumn,
+    "--panel-col": zoom.column,
+    "--panels": panels.length,
+  } as React.CSSProperties;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+        <div className="flex w-full gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 sm:w-auto">
           {QUICK_DAYS.map((day) => {
             const key = shiftDateKey(today, day.offset);
             const selected = key === dateKey;
@@ -310,7 +316,7 @@ export default function ScheduleBoard({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setDateKey(key)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition sm:flex-none sm:py-1.5 ${
                   selected
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -333,10 +339,10 @@ export default function ScheduleBoard({
           onChange={(event) => {
             if (event.target.value) setDateKey(event.target.value);
           }}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-900"
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 outline-none focus:border-slate-900 sm:flex-none sm:py-1.5"
         />
 
-        <p className="text-sm text-slate-600">
+        <p className="order-last w-full text-sm text-slate-600 sm:order-none sm:w-auto">
           {longDateLabel(dateKey)} &middot; {bookings.length} session
           {bookings.length === 1 ? "" : "s"}
         </p>
@@ -348,7 +354,7 @@ export default function ScheduleBoard({
             disabled={!canZoomOut}
             aria-label="Zoom out"
             title="Fit more of the day on screen"
-            className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg px-3 py-2 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:px-2.5 sm:py-1"
           >
             &minus;
           </button>
@@ -361,7 +367,7 @@ export default function ScheduleBoard({
             disabled={!canZoomIn}
             aria-label="Zoom in"
             title="Show more of each session"
-            className="rounded-lg px-2.5 py-1 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg px-3 py-2 text-base leading-none font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:px-2.5 sm:py-1"
           >
             +
           </button>
@@ -397,7 +403,7 @@ export default function ScheduleBoard({
         <div className="sticky top-16 z-40 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm text-sky-900 shadow-sm">
           <span>
             Moving <strong>{movingBooking.candidateName}</strong> (
-            {movingBooking.companyName}). Click an empty slot to place it.
+            {movingBooking.companyName}). Choose an empty slot to place it.
           </span>
           <button
             type="button"
@@ -410,8 +416,17 @@ export default function ScheduleBoard({
       ) : null}
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="thin-scroll max-h-[72vh] overflow-auto">
-          <div className="grid min-w-max" style={{ gridTemplateColumns }}>
+        {/* On a phone: the screen less the header, toolbar and tab bar (about
+            17.5rem between them), so the grid ends above the tab bar. */}
+        <div
+          className="thin-scroll max-h-[calc(100dvh-17.5rem)] min-h-64 snap-x snap-mandatory overflow-auto overscroll-x-contain sm:max-h-[72vh] sm:snap-none"
+          // A snapped panel lands beside the sticky time column, not under it.
+          style={{ scrollPaddingLeft: zoom.timeColumn }}
+        >
+          <div
+            className={`schedule-grid grid min-w-max ${zoom.detail ? "schedule-grid-fill" : ""}`}
+            style={gridSizing}
+          >
             <div
               style={{ gridColumn: 1, gridRow: 1 }}
               className="sticky top-0 left-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold tracking-wider text-slate-500 uppercase"
@@ -422,7 +437,7 @@ export default function ScheduleBoard({
               <div
                 key={panel.id}
                 style={{ gridColumn: column + 2, gridRow: 1 }}
-                className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3 text-center"
+                className="sticky top-0 z-20 snap-start border-b border-slate-200 bg-slate-50 px-3 py-3 text-center"
               >
                 <p className="text-sm font-bold tracking-tight text-slate-900">
                   {panel.label}
@@ -442,7 +457,7 @@ export default function ScheduleBoard({
                   type="button"
                   disabled={busy}
                   onClick={() => setClosed(panel.id, !closedPanelIds.has(panel.id))}
-                  className={`mt-1 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 ${
+                  className={`mt-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 sm:px-2 sm:py-0.5 sm:text-[11px] ${
                     closedPanelIds.has(panel.id)
                       ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                       : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
@@ -583,7 +598,7 @@ export default function ScheduleBoard({
                                 event.stopPropagation();
                                 void cancelBooking(booking);
                               }}
-                              className="shrink-0 rounded px-1 text-sm leading-none text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
+                              className="shrink-0 rounded px-1 text-sm leading-none text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100 pointer-coarse:-my-1 pointer-coarse:px-2 pointer-coarse:py-1 pointer-coarse:text-base pointer-coarse:opacity-100"
                             >
                               &times;
                             </button>
@@ -663,7 +678,7 @@ export default function ScheduleBoard({
                       type="button"
                       disabled={busy}
                       onClick={() => handleEmptyCellClick(panel.id, slotIndex)}
-                      className={`h-full ${zoom.row} w-full rounded-lg border border-dashed ${zoom.text} transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"}`}
+                      className={`h-full ${zoom.row} w-full rounded-lg border border-dashed ${zoom.text} transition ${isDropTarget ? "border-sky-500 bg-sky-100 text-sky-800" : movingId ? "border-sky-300 bg-sky-50/40 text-sky-700 hover:border-sky-500 hover:bg-sky-100" : "border-slate-200 text-transparent hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 pointer-coarse:text-slate-300 active:border-emerald-400 active:bg-emerald-50 active:text-emerald-700"}`}
                     >
                       {movingId ? "Place here" : "Add"}
                     </button>
@@ -733,7 +748,19 @@ export default function ScheduleBoard({
       <p className="mt-3 text-xs text-slate-500">
         {loading && !data
           ? "Loading schedule..."
-          : "Drag a session onto another panel or time, or click it and then click its destination. Updates every few seconds."}
+          : (
+            <>
+              <span className="pointer-coarse:hidden">
+                Drag a session onto another panel or time, or click it and then
+                click its destination.
+              </span>
+              <span className="hidden pointer-coarse:inline">
+                Tap a session, then tap where it should go. Swipe sideways for
+                the other panels.
+              </span>{" "}
+              Updates every few seconds.
+            </>
+          )}
       </p>
 
       {target ? (

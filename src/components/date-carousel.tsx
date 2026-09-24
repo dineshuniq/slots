@@ -14,7 +14,7 @@ export default function DateCarousel({ days, selected, onSelect }: Props) {
     <div
       role="tablist"
       aria-label="Select a date"
-      className="thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+      className="thin-scroll -mx-1 flex snap-x snap-mandatory scroll-px-1 gap-2 overflow-x-auto overscroll-x-contain px-1 pb-1"
     >
       {days.map((day) => {
         const isSelected = day.key === selected;
@@ -25,7 +25,7 @@ export default function DateCarousel({ days, selected, onSelect }: Props) {
             type="button"
             aria-selected={isSelected}
             onClick={() => onSelect(day.key)}
-            className={`flex min-w-[76px] flex-1 shrink-0 flex-col items-center rounded-xl border px-3 py-2.5 transition ${
+            className={`flex min-w-[76px] flex-1 shrink-0 snap-start flex-col items-center rounded-xl border px-3 py-2.5 transition active:scale-95 ${
               isSelected
                 ? "border-slate-900 bg-slate-900 text-white shadow-sm"
                 : day.isPast

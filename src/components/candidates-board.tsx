@@ -20,6 +20,38 @@ type CandidateRecord = {
 
 type Filter = "all" | "active" | "disabled";
 
+function SourceBadge({ source }: { source: CandidateSource }) {
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+        source === "Uniq"
+          ? "bg-indigo-100 text-indigo-700"
+          : "bg-amber-100 text-amber-800"
+      }`}
+    >
+      {source}
+    </span>
+  );
+}
+
+function StatusPill({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+        active ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`h-1.5 w-1.5 rounded-full ${
+          active ? "bg-emerald-500" : "bg-slate-400"
+        }`}
+      />
+      {active ? "Active" : "Disabled"}
+    </span>
+  );
+}
+
 export default function CandidatesBoard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [issued, setIssued] = useState<CandidateRecord | null>(null);
@@ -227,7 +259,7 @@ export default function CandidatesBoard() {
     "mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
           Candidates
@@ -256,7 +288,7 @@ export default function CandidatesBoard() {
         </p>
       ) : null}
 
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <h2 className="text-base font-semibold text-slate-900">
           Generate a token
         </h2>
@@ -353,7 +385,7 @@ export default function CandidatesBoard() {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2.5"
             >
               {busy ? "Generating..." : "Generate token"}
             </button>
@@ -396,7 +428,7 @@ export default function CandidatesBoard() {
           <div
             role="tablist"
             aria-label="Filter tokens"
-            className="flex gap-1 rounded-xl bg-slate-100 p-1"
+            className="flex w-full gap-1 rounded-xl bg-slate-100 p-1 sm:w-auto"
           >
             {(["all", "active", "disabled"] as Filter[]).map((value) => (
               <button
@@ -405,7 +437,7 @@ export default function CandidatesBoard() {
                 type="button"
                 aria-selected={filter === value}
                 onClick={() => setFilter(value)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition ${
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium capitalize transition sm:flex-none sm:py-1.5 ${
                   filter === value
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -422,12 +454,12 @@ export default function CandidatesBoard() {
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search name, token, or phone"
             aria-label="Search candidates"
-            className="ml-auto w-full max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:ml-auto sm:max-w-xs sm:py-2"
           />
         </div>
 
         {selected.size > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm">
+          <div className="sticky top-[4.25rem] z-20 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-slate-50/95 px-3 py-2.5 text-sm shadow-lg backdrop-blur sm:static sm:gap-3 sm:bg-slate-50 sm:px-4 sm:shadow-none">
             <span className="font-medium text-slate-900">
               {selected.size} selected
             </span>
@@ -470,7 +502,112 @@ export default function CandidatesBoard() {
           </div>
         ) : null}
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Phone: one card per candidate. Nine columns do not fit a phone,
+            and a sideways-scrolling table hides the action button off-screen. */}
+        <div className="mt-4 sm:hidden">
+          {loading ? (
+            <p className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+              Loading roster...
+            </p>
+          ) : visible.length === 0 ? (
+            <p className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+              {records.length === 0
+                ? "No candidates yet. Generate a token above."
+                : "No candidates match that filter."}
+            </p>
+          ) : (
+            <>
+              <label className="mb-2 flex items-center gap-3 px-1 py-1 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  className="h-5 w-5 cursor-pointer rounded border-slate-300 accent-slate-900"
+                />
+                Select all {visible.length} shown
+              </label>
+
+              <ul className="space-y-2">
+                {visible.map((record) => (
+                  <li
+                    key={record.id}
+                    className={`rounded-2xl border bg-white p-3.5 shadow-sm transition ${
+                      selected.has(record.id)
+                        ? "border-indigo-400 ring-2 ring-indigo-100"
+                        : "border-slate-200"
+                    } ${record.active ? "" : "opacity-70"}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${record.name}`}
+                        checked={selected.has(record.id)}
+                        onChange={() => toggleOne(record.id)}
+                        className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 accent-slate-900"
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryId(record.id)}
+                            className="min-w-0 truncate text-left text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2"
+                          >
+                            {record.name}
+                          </button>
+                          <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-sm font-bold tracking-widest text-slate-900">
+                            {record.token}
+                          </span>
+                        </div>
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+                          <SourceBadge source={record.source} />
+                          {record.company ? (
+                            <span className="min-w-0 truncate">{record.company}</span>
+                          ) : null}
+                          {record.phone ? (
+                            <a
+                              href={`tel:${record.phone}`}
+                              className="tabular-nums text-indigo-700"
+                            >
+                              {record.phone}
+                            </a>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <StatusPill active={record.active} />
+                          <span className="text-xs text-slate-500 tabular-nums">
+                            {record.bookingCount} booking
+                            {record.bookingCount === 1 ? "" : "s"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggle(record)}
+                            disabled={pendingId === record.id}
+                            className={`ml-auto rounded-lg border px-3.5 py-2 text-xs font-semibold transition disabled:opacity-50 ${
+                              record.active
+                                ? "border-slate-300 text-slate-700 active:bg-slate-100"
+                                : "border-emerald-400 text-emerald-700 active:bg-emerald-50"
+                            }`}
+                          >
+                            {pendingId === record.id
+                              ? "Saving..."
+                              : record.active
+                                ? "Disable"
+                                : "Enable"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        <div className="mt-4 hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:block">
           <div className="thin-scroll overflow-x-auto">
             <table className="w-full min-w-[40rem] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs tracking-wider text-slate-500 uppercase">
@@ -541,36 +678,14 @@ export default function CandidatesBoard() {
                       </td>
                       <td className="px-4 py-3">{record.phone ?? "—"}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
-                            record.source === "Uniq"
-                              ? "bg-indigo-100 text-indigo-700"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {record.source}
-                        </span>
+                        <SourceBadge source={record.source} />
                       </td>
                       <td className="px-4 py-3">{record.company ?? "—"}</td>
                       <td className="px-4 py-3 tabular-nums">
                         {record.bookingCount}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            record.active
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-slate-200 text-slate-600"
-                          }`}
-                        >
-                          <span
-                            aria-hidden
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              record.active ? "bg-emerald-500" : "bg-slate-400"
-                            }`}
-                          />
-                          {record.active ? "Active" : "Disabled"}
-                        </span>
+                        <StatusPill active={record.active} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
