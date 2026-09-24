@@ -456,19 +456,31 @@ export default function ScheduleBoard({
 
   const dockVisible = Boolean((editing && movingBooking) || lastChange || flash);
 
+  // The phone shows the date as words, not as a date field's "09/25/2026",
+  // which a narrow screen cut down to "09/2".
+  const shownDay = days.find((day) => day.key === dateKey);
+  const relativeDay =
+    dateKey === today
+      ? "Today"
+      : dateKey === shiftDateKey(today, -1)
+        ? "Yesterday"
+        : dateKey === shiftDateKey(today, 1)
+          ? "Tomorrow"
+          : null;
+
   const stepButton =
-    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg leading-none font-semibold text-slate-700 transition active:bg-slate-100 disabled:opacity-35";
+    "flex min-h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg leading-none font-semibold text-slate-700 transition active:bg-slate-100 disabled:opacity-35";
 
   return (
     <div
       className={`mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-6 ${
-        dockVisible ? "pb-44 md:pb-28" : ""
+        dockVisible ? "pb-36 md:pb-28" : ""
       }`}
     >
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* Phone: one row. A day either way, the date itself, and a way back
-            to today - the three-button strip and its label are too wide. */}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:hidden">
+        {/* Phone: one row. A day either way and the date between them -
+            the three-button strip and its label are too wide. */}
+        <div className="flex min-w-0 flex-1 items-stretch gap-1.5 sm:hidden">
           <button
             type="button"
             aria-label="Previous day"
@@ -478,17 +490,31 @@ export default function ScheduleBoard({
           >
             &lsaquo;
           </button>
-          <input
-            type="date"
-            aria-label="Date"
-            value={dateKey}
-            min={firstDay}
-            max={lastDay}
-            onChange={(event) => {
-              if (event.target.value) setDateKey(event.target.value);
-            }}
-            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm font-semibold text-slate-800 outline-none focus:border-slate-900"
-          />
+          {/* The date in words, with the date field laid invisibly over it:
+              a tap still opens the phone's own calendar. */}
+          <label className="relative flex min-h-10 min-w-0 flex-1 cursor-pointer flex-col items-center justify-center rounded-lg border border-slate-300 bg-white px-2 py-1 leading-tight focus-within:border-slate-900 focus-within:ring-2 focus-within:ring-slate-900/10">
+            <span className="max-w-full truncate text-sm font-semibold text-slate-900">
+              {shownDay
+                ? `${shownDay.weekday}, ${shownDay.dayOfMonth} ${shownDay.month}`
+                : longDateLabel(dateKey)}
+            </span>
+            {relativeDay ? (
+              <span className="text-[11px] font-medium text-indigo-600">
+                {relativeDay}
+              </span>
+            ) : null}
+            <input
+              type="date"
+              aria-label="Date"
+              value={dateKey}
+              min={firstDay}
+              max={lastDay}
+              onChange={(event) => {
+                if (event.target.value) setDateKey(event.target.value);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </label>
           <button
             type="button"
             aria-label="Next day"
@@ -498,15 +524,6 @@ export default function ScheduleBoard({
           >
             &rsaquo;
           </button>
-          {dateKey !== today ? (
-            <button
-              type="button"
-              onClick={() => setDateKey(today)}
-              className="h-10 shrink-0 rounded-lg px-2 text-sm font-semibold text-indigo-700 active:bg-indigo-50"
-            >
-              Today
-            </button>
-          ) : null}
         </div>
 
         {/* Laptop: the three days controllers reach for, and any other. */}
@@ -585,7 +602,7 @@ export default function ScheduleBoard({
             type="button"
             onClick={() => setEditMode(!editing)}
             aria-pressed={editing}
-            className={`flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition sm:h-auto sm:py-1.5 ${
+            className={`flex min-h-10 items-center gap-1.5 self-stretch rounded-lg px-3.5 text-sm font-semibold transition sm:min-h-0 sm:py-1.5 ${
               editing
                 ? "bg-amber-400 text-amber-950 shadow-sm hover:bg-amber-300"
                 : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -646,10 +663,10 @@ export default function ScheduleBoard({
           editing ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200"
         }`}
       >
-        {/* On a phone: the screen less the header, the toolbar and the tab
-            bar (about 12.5rem between them), so the grid ends above the tab
-            bar and the page itself barely scrolls. */}
-        <div className="thin-scroll max-h-[calc(100dvh-12.5rem)] min-h-64 overflow-auto overscroll-contain sm:max-h-[72vh]">
+        {/* On a phone: the screen less the header and the toolbar (about
+            8.5rem between them), so the grid runs to the bottom of the screen
+            and the page itself barely scrolls. */}
+        <div className="thin-scroll max-h-[calc(100dvh-8.5rem)] min-h-64 overflow-auto overscroll-contain sm:max-h-[72vh]">
           <div
             className="schedule-grid grid w-full sm:w-auto sm:min-w-max"
             style={gridSizing}
@@ -687,7 +704,7 @@ export default function ScheduleBoard({
                     onClick={() =>
                       setClosed(panel.id, !closedPanelIds.has(panel.id))
                     }
-                    className={`mt-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:opacity-50 sm:py-0.5 ${
+                    className={`mt-1 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 max-sm:hidden ${
                       closedPanelIds.has(panel.id)
                         ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
@@ -707,7 +724,7 @@ export default function ScheduleBoard({
               >
                 {/* Phone: a ruler - the hour, then ":30". */}
                 <p
-                  className={`tabular-nums sm:hidden ${
+                  className={`whitespace-nowrap tabular-nums sm:hidden ${
                     slotIndex % 2 === 0
                       ? "text-[11px] font-semibold"
                       : "text-[10px] opacity-60"
@@ -1049,11 +1066,11 @@ export default function ScheduleBoard({
         Updates every few seconds.
       </p>
 
-      {/* The dock: what is armed, and what can be taken back. Above the tab
-          bar on a phone, bottom-centre on a laptop - where the eye already is
-          after a tap, and never pushing the grid down. */}
+      {/* The dock: what is armed, and what can be taken back. Bottom of the
+          screen, clear of the home indicator - where the eye already is after
+          a tap, and never pushing the grid down. */}
       {dockVisible ? (
-        <div className="no-print fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-lg flex-col gap-2 md:bottom-6">
+        <div className="no-print fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-lg flex-col gap-2 md:bottom-6">
           {editing && movingBooking ? (
             <div
               role="status"

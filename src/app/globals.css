@@ -33,7 +33,7 @@ body {
    16px on a phone instead, which is what made the controller sign-in lurch
    sideways on the first tap. Unlayered on purpose, so it outranks Tailwind's
    text-sm; fields already at 16px or more are left alone. */
-@media (max-width: 639.98px) {
+@media (width < 40rem) {
   :is(
       input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"]),
       select,
@@ -52,26 +52,25 @@ body {
     repeat(var(--panels), minmax(var(--panel-col), 1fr));
 }
 
-/* On a phone every panel is on screen at once: a narrow ruler of times, then
-   the panels sharing what is left. A chip there is one or two lines of
-   "NAME - Company", so a third of a phone is enough for it. With more panels
-   than fit at 5rem, the grid scrolls sideways instead of crushing them.
-   5rem is what lets three panels fit a 320px phone: 320 less 1.5rem of
-   gutter, 2px of border and the 2.75rem ruler leaves 250px, and 3 x 80 = 240.
-   Zoom is a laptop control and does not apply here. */
-@media (max-width: 639.98px) {
+/* On a phone every panel is on screen at once: a ruler of times exactly as
+   wide as its longest label, then the panels sharing what is left. A chip
+   there is one or two lines of "NAME - Company", so a third of a phone is
+   enough for it. The 72px floor is in pixels on purpose: it is the least a
+   chip needs, and it should not grow when a phone's text size is turned up.
+   With more panels than fit, the grid scrolls sideways instead of crushing
+   them. Zoom is a laptop control and does not apply here.
+
+   The breakpoint is Tailwind's own `sm` (40rem), written the same way. This
+   was a pixel breakpoint once, and on a phone with its text size turned up
+   the two came apart: rem breakpoints scale with the text and pixel ones do
+   not, so the phone chips and toolbar switched over while the grid kept its
+   laptop columns and ran off the right edge. Every phone rule in this file
+   uses the rem form for that reason. */
+@media (width < 40rem) {
   .schedule-grid {
     grid-template-columns:
-      2.75rem
-      repeat(var(--panels), minmax(5rem, 1fr));
-  }
-}
-
-/* Room at the bottom of the page for the phone tab bar, including the home
-   indicator strip on notched phones. */
-@media (max-width: 767.98px) {
-  body:has(.app-tabbar) {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+      max-content
+      repeat(var(--panels), minmax(72px, 1fr));
   }
 }
 

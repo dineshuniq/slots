@@ -14,8 +14,6 @@ type Props = {
 type NavLink = {
   href: string;
   label: string;
-  /** What fits under an icon in a fifth of a phone's width. */
-  short: string;
   icon: React.ReactNode;
 };
 
@@ -25,7 +23,6 @@ const CONTROLLER_LINKS: NavLink[] = [
   {
     href: "/schedule",
     label: "Schedule",
-    short: "Schedule",
     icon: (
       <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
@@ -36,7 +33,6 @@ const CONTROLLER_LINKS: NavLink[] = [
   {
     href: "/mock",
     label: "Mock",
-    short: "Mock",
     icon: (
       <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <rect x="5" y="4" width="14" height="17" rx="2.5" />
@@ -47,7 +43,6 @@ const CONTROLLER_LINKS: NavLink[] = [
   {
     href: "/book",
     label: "Book",
-    short: "Book",
     icon: (
       <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <circle cx="12" cy="12" r="9" />
@@ -58,7 +53,6 @@ const CONTROLLER_LINKS: NavLink[] = [
   {
     href: "/candidates",
     label: "Candidates",
-    short: "Candidates",
     icon: (
       <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <circle cx="9" cy="8" r="3.5" />
@@ -69,7 +63,6 @@ const CONTROLLER_LINKS: NavLink[] = [
   {
     href: "/audit",
     label: "Audit Logs",
-    short: "Audit",
     icon: (
       <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
@@ -82,11 +75,10 @@ const CONTROLLER_LINKS: NavLink[] = [
 /**
  * App chrome.
  *
- * On a phone a controller's five sections live in a tab bar at the bottom of
- * the screen, where a thumb reaches them, and the account actions fold into
- * one button at the top. The same header on a laptop keeps everything inline.
- * Wrapped into one row, the old version grew to three sticky rows on a phone
- * and covered a third of the screen before any content.
+ * On a phone the header is one slim bar and nothing more: the app name opens
+ * the list of sections, and the account initial opens password and sign-out.
+ * Nothing is pinned to the bottom of the screen, which is given to the
+ * content. The same header on a laptop keeps everything inline.
  */
 export default function AppHeader({ role, displayName }: Props) {
   const router = useRouter();
@@ -94,15 +86,18 @@ export default function AppHeader({ role, displayName }: Props) {
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !navOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      setNavOpen(false);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [menuOpen]);
+  }, [menuOpen, navOpen]);
 
   async function signOut() {
     setBusy(true);
@@ -115,6 +110,7 @@ export default function AppHeader({ role, displayName }: Props) {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
   const initial = displayName.trim().charAt(0).toUpperCase() || "?";
+  const current = links.find((link) => isActive(link.href));
 
   const outline =
     "rounded-lg border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 hover:text-white disabled:opacity-60";
@@ -123,7 +119,50 @@ export default function AppHeader({ role, displayName }: Props) {
     <>
       <header className="no-print sticky top-0 z-40 border-b border-slate-800 bg-slate-900 text-white shadow-sm">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
-          <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
+          {links.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNavOpen((open) => !open);
+                setMenuOpen(false);
+              }}
+              aria-haspopup="menu"
+              aria-expanded={navOpen}
+              className="-ml-2 flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold tracking-tight transition active:bg-slate-800 md:hidden"
+            >
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm bg-indigo-400"
+              />
+              <span className="shrink-0">Panel Slots</span>
+              {/* Where you are, now that no bar at the bottom shows it. */}
+              {current ? (
+                <span className="truncate font-normal text-slate-400">
+                  &middot; {current.label}
+                </span>
+              ) : null}
+              <svg
+                aria-hidden
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`h-4 w-4 shrink-0 text-slate-400 transition ${
+                  navOpen ? "rotate-180" : ""
+                }`}
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M5.2 7.7a.75.75 0 0 1 1.06.02L10 11.7l3.74-3.98a.75.75 0 1 1 1.1 1.02l-4.3 4.57a.75.75 0 0 1-1.08 0l-4.3-4.57a.75.75 0 0 1 .04-1.06Z"
+                />
+              </svg>
+            </button>
+          ) : null}
+
+          <span
+            className={`shrink-0 items-center gap-2 text-sm font-semibold tracking-tight ${
+              links.length > 0 ? "hidden md:flex" : "flex"
+            }`}
+          >
             <span
               aria-hidden
               className="inline-block h-2.5 w-2.5 rounded-sm bg-indigo-400"
@@ -183,7 +222,10 @@ export default function AppHeader({ role, displayName }: Props) {
           <div className="relative ml-auto md:hidden">
             <button
               type="button"
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={() => {
+                setMenuOpen((open) => !open);
+                setNavOpen(false);
+              }}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               aria-label={`Account: ${displayName}`}
@@ -241,36 +283,41 @@ export default function AppHeader({ role, displayName }: Props) {
         </div>
       </header>
 
-      {links.length > 0 ? (
-        <nav
-          aria-label="Sections"
-          className="app-tabbar no-print fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgb(15_23_42/0.06)] backdrop-blur md:hidden"
-        >
-          <div className="grid h-16 grid-cols-5">
+      {navOpen && links.length > 0 ? (
+        <>
+          {/* Dims the page and catches the tap outside that closes it. */}
+          <button
+            type="button"
+            aria-label="Close menu"
+            tabIndex={-1}
+            onClick={() => setNavOpen(false)}
+            className="no-print fixed inset-x-0 top-14 bottom-0 z-30 cursor-default bg-slate-900/40 md:hidden"
+          />
+          <nav
+            aria-label="Sections"
+            className="no-print fixed inset-x-0 top-14 z-40 border-b border-slate-200 bg-white p-2 shadow-xl md:hidden"
+          >
             {links.map((link) => {
               const active = isActive(link.href);
               return (
                 <Link
                   key={link.href}
                   href={link.href}
+                  onClick={() => setNavOpen(false)}
                   aria-current={active ? "page" : undefined}
-                  className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition active:scale-95 ${
-                    active ? "text-indigo-700" : "text-slate-500"
+                  className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium transition ${
+                    active
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-700 active:bg-slate-100"
                   }`}
                 >
-                  <span
-                    className={`flex h-8 w-14 items-center justify-center rounded-full transition ${
-                      active ? "bg-indigo-100" : ""
-                    }`}
-                  >
-                    {link.icon}
-                  </span>
-                  {link.short}
+                  {link.icon}
+                  {link.label}
                 </Link>
               );
             })}
-          </div>
-        </nav>
+          </nav>
+        </>
       ) : null}
 
       {showPassword ? (

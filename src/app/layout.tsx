@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Lets the tab bar reach under the home indicator on notched phones; the
-  // safe-area insets in the CSS keep its buttons clear of it.
+  // Lets the page reach under the home indicator on notched phones; the
+  // safe-area insets in the CSS keep the Undo bar and sheets clear of it.
   viewportFit: "cover",
   // Tints the phone's browser bar to match the header.
   themeColor: "#0f172a",
