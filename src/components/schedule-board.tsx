@@ -521,7 +521,7 @@ export default function ScheduleBoard({
                           }
                         }}
                         title={`${booking.candidateName} / ${booking.companyName} / ${booking.sessionType} / ${sessionRangeLabel(booking.slotIndex, booking.slotCount)}`}
-                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-xl border py-2 pr-2 pl-3.5 shadow-sm transition ${hue.card} ${past ? "cursor-default opacity-60 saturate-50" : isMoving ? "cursor-grab shadow-lg ring-2 ring-sky-400 ring-offset-1 active:cursor-grabbing" : "cursor-grab hover:-translate-y-px hover:shadow-md active:cursor-grabbing"}`}
+                        className={`group relative isolate flex h-full flex-col overflow-hidden rounded-xl border py-1.5 pr-2 pl-3.5 shadow-sm transition ${hue.card} ${past ? "cursor-default opacity-60 saturate-50" : isMoving ? "cursor-grab shadow-lg ring-2 ring-sky-400 ring-offset-1 active:cursor-grabbing" : "cursor-grab hover:-translate-y-px hover:shadow-md active:cursor-grabbing"}`}
                       >
                         {/* Solid rail down the left edge: the company's colour
                             at full strength, so the chip reads as a block of
@@ -544,8 +544,13 @@ export default function ScheduleBoard({
                           </>
                         ) : null}
 
-                        <div className="relative z-10 flex items-start gap-1.5">
-                          <div className="min-w-0 flex-1">
+                        {/* Line one: who, and what kind of session. The
+                            name gives way first when space runs out, so the
+                            session type is never the part that gets cut. */}
+                        <div
+                          className={`relative z-10 flex items-start gap-1.5 ${zoom.nameText}`}
+                        >
+                          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
                             <button
                               type="button"
                               title={`View ${booking.candidateName}'s history`}
@@ -553,61 +558,52 @@ export default function ScheduleBoard({
                                 event.stopPropagation();
                                 setHistoryId(booking.candidateId);
                               }}
-                              className={`block max-w-full cursor-pointer truncate rounded text-left font-semibold tracking-[0.04em] uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-current ${hue.name} ${zoom.nameText}`}
+                              className={`min-w-0 cursor-pointer truncate rounded text-left font-semibold tracking-[0.04em] uppercase underline decoration-transparent underline-offset-2 transition hover:decoration-current ${hue.name}`}
                             >
                               {booking.candidateName}
                             </button>
 
-                            {/* Name and company at every zoom - between them
-                                they say who is sitting and for whom, which is
-                                the whole point of the chip. */}
-                            <p
-                              className={`mt-0.5 flex min-w-0 items-center gap-1 font-medium ${hue.company} ${zoom.companyText}`}
-                            >
-                              <svg
-                                aria-hidden
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                className="h-3 w-3 shrink-0 opacity-70"
+                            {zoom.detail ? (
+                              <span
+                                className={`shrink-0 text-[0.9em] font-medium whitespace-nowrap ${hue.session}`}
                               >
-                                <path
-                                  fillRule="evenodd"
-                                  clipRule="evenodd"
-                                  d="M3 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v12h1.5a.5.5 0 0 1 0 1h-10a.5.5 0 0 1 0-1H3V2Zm2 1.5h1.5V5H5V3.5Zm3 0h1.5V5H8V3.5ZM5 6.5h1.5V8H5V6.5Zm3 0h1.5V8H8V6.5ZM5 9.5h1.5V11H5V9.5Zm3 0h1.5V11H8V9.5ZM6.5 12.5H8V14H6.5v-1.5Z"
-                                />
-                              </svg>
-                              <span className="truncate">{booking.companyName}</span>
-                            </p>
+                                <span aria-hidden className="mr-1.5 opacity-60">
+                                  &ndash;
+                                </span>
+                                {booking.sessionType}
+                              </span>
+                            ) : null}
                           </div>
+
                           {past ? null : (
-                          <button
-                            type="button"
-                            aria-label={`Cancel booking for ${booking.candidateName}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void cancelBooking(booking);
-                            }}
-                            className="shrink-0 rounded px-1 text-sm leading-none text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
-                          >
-                            &times;
-                          </button>
+                            <button
+                              type="button"
+                              aria-label={`Cancel booking for ${booking.candidateName}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void cancelBooking(booking);
+                              }}
+                              className="shrink-0 rounded px-1 text-sm leading-none text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-700 focus:opacity-100"
+                            >
+                              &times;
+                            </button>
                           )}
                         </div>
 
-                        {/* Anchored to the bottom, so a long session has
-                            something at both ends instead of a void below the
-                            name. A half-hour chip at the default zoom has no
-                            room for it; the tooltip still carries the type. */}
-                        {zoom.detail &&
-                        (booking.slotCount > 1 || zoom.name === "Large") ? (
-                          <div className="relative z-10 mt-auto pt-1.5">
-                            <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${hue.pill}`}
-                            >
-                              {booking.sessionType}
-                            </span>
-                          </div>
-                        ) : null}
+                        {/* Line two: the company, as the display line. Sized
+                            per zoom to fill what the name leaves of a
+                            half-hour chip; uppercase has no descenders, so it
+                            can sit on a line height of 1. A longer session has
+                            room to wrap rather than cut the name off. */}
+                        <p
+                          className={`relative z-10 mt-1 font-bold tracking-[0.02em] uppercase ${hue.company} ${zoom.companyText} ${
+                            booking.slotCount > 1
+                              ? "line-clamp-3 leading-[1.05] break-words"
+                              : "truncate leading-none"
+                          }`}
+                        >
+                          {booking.companyName}
+                        </p>
                       </div>
                     </div>
                   );

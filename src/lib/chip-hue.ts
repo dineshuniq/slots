@@ -20,8 +20,8 @@ export type ChipHue = {
   rail: string;
   name: string;
   company: string;
-  /** Session type tag. */
-  pill: string;
+  /** Session type, inline after the name. */
+  session: string;
   /** Gradient that fades the need-mock chevrons out under the text. */
   fade: string;
 };
@@ -32,7 +32,7 @@ const HUES: ChipHue[] = [
     rail: "bg-indigo-500",
     name: "text-indigo-900",
     company: "text-indigo-700",
-    pill: "bg-white/70 text-indigo-700",
+    session: "text-indigo-600",
     fade: "from-indigo-100 from-40% via-indigo-100/80 via-60% to-transparent to-90%",
   },
   {
@@ -40,7 +40,7 @@ const HUES: ChipHue[] = [
     rail: "bg-teal-500",
     name: "text-teal-900",
     company: "text-teal-700",
-    pill: "bg-white/70 text-teal-700",
+    session: "text-teal-600",
     fade: "from-teal-100 from-40% via-teal-100/80 via-60% to-transparent to-90%",
   },
   {
@@ -48,7 +48,7 @@ const HUES: ChipHue[] = [
     rail: "bg-violet-500",
     name: "text-violet-900",
     company: "text-violet-700",
-    pill: "bg-white/70 text-violet-700",
+    session: "text-violet-600",
     fade: "from-violet-100 from-40% via-violet-100/80 via-60% to-transparent to-90%",
   },
   {
@@ -56,7 +56,7 @@ const HUES: ChipHue[] = [
     rail: "bg-blue-500",
     name: "text-blue-900",
     company: "text-blue-700",
-    pill: "bg-white/70 text-blue-700",
+    session: "text-blue-600",
     fade: "from-blue-100 from-40% via-blue-100/80 via-60% to-transparent to-90%",
   },
   {
@@ -64,7 +64,7 @@ const HUES: ChipHue[] = [
     rail: "bg-fuchsia-500",
     name: "text-fuchsia-900",
     company: "text-fuchsia-700",
-    pill: "bg-white/70 text-fuchsia-700",
+    session: "text-fuchsia-600",
     fade: "from-fuchsia-100 from-40% via-fuchsia-100/80 via-60% to-transparent to-90%",
   },
   {
@@ -72,7 +72,7 @@ const HUES: ChipHue[] = [
     rail: "bg-cyan-600",
     name: "text-cyan-900",
     company: "text-cyan-800",
-    pill: "bg-white/70 text-cyan-800",
+    session: "text-cyan-700",
     fade: "from-cyan-100 from-40% via-cyan-100/80 via-60% to-transparent to-90%",
   },
 ];

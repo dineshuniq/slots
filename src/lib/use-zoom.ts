@@ -26,7 +26,7 @@ export type ZoomLevel = {
   text: string;
   /** The candidate's name: the thing a controller reads first. */
   nameText: string;
-  /** The company under it, a step down but still legible. */
+  /** The company under it: the display line, filling what is left. */
   companyText: string;
   padding: string;
   /** Whether a chip has room for company and session type. */
@@ -36,23 +36,23 @@ export type ZoomLevel = {
 export const ZOOM_LEVELS: ZoomLevel[] = [
   {
     name: "Compact",
-    row: "min-h-[2.75rem]",
+    row: "min-h-[3rem]",
     column: "7.5rem",
     timeColumn: "4.25rem",
     text: "text-[10px]",
     nameText: "text-[11px] leading-tight",
-    companyText: "text-[10px] leading-tight",
+    companyText: "text-[11px]",
     padding: "p-1",
     detail: false,
   },
   {
     name: "Default",
-    row: "min-h-[3.25rem]",
+    row: "min-h-[3.5rem]",
     column: "11rem",
     timeColumn: "5.5rem",
     text: "text-[11px]",
     nameText: "text-[13px] leading-tight",
-    companyText: "text-xs leading-tight",
+    companyText: "text-[15px]",
     padding: "p-1.5",
     detail: true,
   },
@@ -63,7 +63,7 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
     timeColumn: "6.5rem",
     text: "text-xs",
     nameText: "text-[15px] leading-tight",
-    companyText: "text-[13px] leading-tight",
+    companyText: "text-[22px]",
     padding: "p-2",
     detail: true,
   },
